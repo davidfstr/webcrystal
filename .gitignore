@@ -4,3 +4,6 @@
 
 # OS X
 .DS_Store
+
+# Caches
+*.cache
