@@ -9,25 +9,21 @@ import shutil
 import sys
 
 
-ADDRESS = ''
-PORT = 6969  # arbitrary
-ORIGIN_HOST = 'xkcd.com'
-
-
 def main(args):
     # Parse arguments
-    # TODO: Better error handling
-    (cache_dirpath,) = args
+    (origin_host, port, cache_dirpath,) = args
+    address = ''
+    port = int(port)
     
     # Open cache
     cache = HttpResourceCache(cache_dirpath)
     atexit.register(lambda: cache.close())
     
     def create_request_handler(*args):
-        return CachingHTTPRequestHandler(*args, cache=cache)
+        return CachingHTTPRequestHandler(*args, origin_host=origin_host, cache=cache)
     
-    print('Listening on %s:%s' % (ADDRESS, PORT))
-    httpd = HTTPServer((ADDRESS, PORT), create_request_handler)
+    print('Listening on %s:%s' % (address, port))
+    httpd = HTTPServer((address, port), create_request_handler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -35,7 +31,13 @@ def main(args):
 
 
 class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
-    def __init__(self, *args, cache):
+    """
+    HTTP request handler that serves requests from an HttpResourceCache.
+    When a resource is requested that isn't in the cache, it will be added
+    to the cache automatically.
+    """
+    def __init__(self, *args, origin_host, cache):
+        self._origin_host = origin_host
         self._cache = cache
         super().__init__(*args)
     
@@ -59,10 +61,10 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             for key in list(request_headers.keys()):
                 if key.lower() == 'host':
                     del request_headers[key]
-            request_headers['Host'] = ORIGIN_HOST
+            request_headers['Host'] = self._origin_host
             
             response = requests.get(
-                'http://%s%s' % (ORIGIN_HOST, self.path),
+                'http://%s%s' % (self._origin_host, self.path),
                 headers=request_headers,
                 allow_redirects=False
             )
