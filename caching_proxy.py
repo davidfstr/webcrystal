@@ -76,10 +76,15 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         resource = self._cache.get(request_url)
         if resource is None:
             request_headers = dict(self.headers)
+            
+            # Set Host request header appropriately
             for key in list(request_headers.keys()):
                 if key.lower() == 'host':
                     del request_headers[key]
             request_headers['Host'] = self._origin_host
+            
+            # Filter out unsafe request headers before sending to origin server
+            _filter_headers(request_headers, 'request header')
             
             response = requests.get(
                 request_url,
@@ -110,14 +115,75 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             resource = self._cache.get(request_url)
             assert resource is not None
         
-        self.send_response(int(resource.headers['X-Status-Code']))
-        for (key, value) in resource.headers.items():
-            if key == 'X-Status-Code':
-                continue
+        status_code = int(resource.headers['X-Status-Code'])
+        response_headers = dict(resource.headers)
+        
+        # Filter out unsafe response headers before sending to client
+        _filter_headers(response_headers, 'response header')
+        
+        # Send headers
+        self.send_response(status_code)
+        for (key, value) in response_headers.items():
             self.send_header(key, value)
         self.end_headers()
         
         return resource.content
+
+
+_HEADER_WHITELIST = [
+    # Request
+    'accept',
+    'accept-encoding',
+    'accept-language',
+    'cookie',
+    'host',
+    'referer',
+    'user-agent',
+    
+    # Response
+    'age',
+    'content-length',
+    'content-type',
+    'date',
+    'etag',
+    'expires',
+    'last-modified',
+    'location',
+    'server',
+    'via',
+]
+_HEADER_BLACKLIST = [
+    # Request
+    'cache-control',
+    'connection',
+    'if-modified-since',
+    'pragma',
+    'upgrade-insecure-requests',
+    
+    # Response
+    'accept-ranges',
+    'cache-control',
+    'connection',
+    'vary',
+    'x-cache',
+    'x-cache-hits',
+    'x-served-by',
+    'x-timer',
+    
+    # Internal
+    'x-status-code',
+]
+
+def _filter_headers(headers, header_type_title):
+    for k in list(headers.keys()):
+        k_lower = k.lower()
+        if k_lower in _HEADER_WHITELIST:
+            pass
+        elif k_lower in _HEADER_BLACKLIST:
+            del headers[k]
+        else:  # graylist
+            print('  - Removing unrecognized %s: %s' % (header_type_title, k))
+            del headers[k]
 
 
 class HttpResourceCache:
