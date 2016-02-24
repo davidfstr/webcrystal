@@ -4,6 +4,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 import json
 import os.path
+import re
 import requests
 import shutil
 import sys
@@ -31,12 +32,15 @@ def main(args):
         pass
 
 
+_ABSOLUTE_REQUEST_URL_RE = re.compile(r'^/_/(https?)/([^/]+)(/.*)$')
+
 class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     """
     HTTP request handler that serves requests from an HttpResourceCache.
     When a resource is requested that isn't in the cache, it will be added
     to the cache automatically.
     """
+    
     def __init__(self, *args, origin_host, cache):
         self._origin_host = origin_host
         self._cache = cache
@@ -54,7 +58,18 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             f.close()
     
     def _send_head(self):
-        request_url = 'http://%s%s' % (self._origin_host, self.path)
+        # Recognize paths like "/_/http/xkcd.com/" and interpret them as
+        # absolute URLs like "http://xkcd.com/".
+        if self.path.startswith('/_/'):
+            m = _ABSOLUTE_REQUEST_URL_RE.match(self.path)
+            if m is None:
+                self.send_response(400)  # Bad Request
+                self.end_headers()
+                return BytesIO(b'')
+            
+            request_url = '%s://%s%s' % m.groups()
+        else:
+            request_url = 'http://%s%s' % (self._origin_host, self.path)
         
         # Try fetch requested resource from cache.
         # If missing fetch the resource from the origin and add it to the cache.
