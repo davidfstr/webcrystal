@@ -7,6 +7,7 @@ import os.path
 import requests
 import shutil
 import sys
+from threading import Lock
 
 
 def main(args):
@@ -107,7 +108,7 @@ class HttpResourceCache:
     Persistent cache of HTTP resources, include the full content and headers of
     each resource.
     
-    This class is not threadsafe.
+    This class is threadsafe.
     """
     
     def __init__(self, root_dirpath):
@@ -115,6 +116,7 @@ class HttpResourceCache:
         Opens the existing cache at the specified directory,
         or creates a new cache if there is no such directory.
         """
+        self._lock = Lock()
         self._root_dirpath = root_dirpath
         
         # Create empty cache if cache does not already exist
@@ -128,6 +130,8 @@ class HttpResourceCache:
             self._paths = f.read().split('\n')
             if self._paths == ['']:
                 self._paths = []
+        # NOTE: It is possible for the cache to contain multiple IDs for the
+        #       same path under rare circumstances. In that case the last ID wins.
         self._resource_id_for_path = {path: i for (i, path) in enumerate(self._paths)}
     
     def get(self, path):
@@ -135,9 +139,10 @@ class HttpResourceCache:
         Gets the HttpResource at the specified path from this cache,
         or None if the specified resource is not in the cache.
         """
-        resource_id = self._resource_id_for_path.get(path)
-        if resource_id is None:
-            return None
+        with self._lock:
+            resource_id = self._resource_id_for_path.get(path)
+            if resource_id is None:
+                return None
         
         with self._open_header(resource_id, 'r') as f:
             headers = json.load(f)
@@ -151,29 +156,41 @@ class HttpResourceCache:
         """
         Puts the specified HttpResource into this cache, replacing any previous
         resource with the same path.
-        """
-        resource_id = self._resource_id_for_path.get(path)
-        if resource_id is None:
-            resource_id = len(self._paths)
-            resource_id_is_new = True
-        else:
-            resource_id_is_new = False
         
+        If two difference resources are put into this cache at the same path
+        concurrently, the last one put into the cache will eventually win.
+        """
+        # Reserve resource ID (if new)
+        with self._lock:
+            resource_id = self._resource_id_for_path.get(path)
+            if resource_id is None:
+                resource_id = len(self._paths)
+                self._paths.append('')  # reserve space
+                resource_id_is_new = True
+            else:
+                resource_id_is_new = False
+        
+        # Write resource content
         with self._open_header(resource_id, 'w') as f:
             json.dump(resource.headers, f)
         with self._open_content(resource_id, 'wb') as f:
             shutil.copyfileobj(resource.content, f)
         
-        # NOTE: Only commit an entry to self._paths AFTER the resource
-        #       content has been written to disk successfully.
+        # Commit resource ID (if new)
         if resource_id_is_new:
-            self._paths.append(path)
-            self._resource_id_for_path[path] = resource_id
+            # NOTE: Only commit an entry to self._paths AFTER the resource
+            #       content has been written to disk successfully.
+            with self._lock:
+                self._paths[resource_id] = path
+                old_resource_id = self._resource_id_for_path.get(path)
+                if old_resource_id is None or old_resource_id < resource_id:
+                    self._resource_id_for_path[path] = resource_id
     
     def flush(self):
         """
         Flushes all pending changes made to this cache to disk.
         """
+        # TODO: Make this operation atomic, even if the write fails in the middle.
         with self._open_paths('w') as f:
             f.write('\n'.join(self._paths))
     
