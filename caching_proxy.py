@@ -7,6 +7,7 @@ import os.path
 import re
 import requests
 import shutil
+from socketserver import ThreadingMixIn
 import sys
 from threading import Lock
 
@@ -25,11 +26,15 @@ def main(args):
         return CachingHTTPRequestHandler(*args, origin_host=origin_host, cache=cache)
     
     print('Listening on %s:%s' % (address, port))
-    httpd = HTTPServer((address, port), create_request_handler)
+    httpd = ThreadedHttpServer((address, port), create_request_handler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+
+
+class ThreadedHttpServer(ThreadingMixIn, HTTPServer):
+    pass
 
 
 _ABSOLUTE_REQUEST_URL_RE = re.compile(r'^/_/(https?)/([^/]+)(/.*)$')
