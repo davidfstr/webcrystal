@@ -83,8 +83,9 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                     del request_headers[key]
             request_headers['Host'] = self._origin_host
             
-            # Filter out unsafe request headers before sending to origin server
+            # Filter request headers before sending to origin server
             _filter_headers(request_headers, 'request header')
+            _reformat_absolute_urls_in_headers(request_headers)
             
             response = requests.get(
                 request_url,
@@ -117,9 +118,14 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         status_code = int(resource.headers['X-Status-Code'])
         response_headers = dict(resource.headers)
+        resource_content = resource.content
         
-        # Filter out unsafe response headers before sending to client
+        # Filter response headers before sending to client
         _filter_headers(response_headers, 'response header')
+        _reformat_absolute_urls_in_headers(response_headers)
+        
+        # Filter response content before sending to client
+        resource_content = _reformat_absolute_urls_in_content(resource_content, response_headers)
         
         # Send headers
         self.send_response(status_code)
@@ -127,7 +133,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             self.send_header(key, value)
         self.end_headers()
         
-        return resource.content
+        return resource_content
 
 
 _HEADER_WHITELIST = [
@@ -141,6 +147,7 @@ _HEADER_WHITELIST = [
     'user-agent',
     
     # Response
+    'access-control-allow-origin',
     'age',
     'content-length',
     'content-type',
@@ -149,8 +156,15 @@ _HEADER_WHITELIST = [
     'expires',
     'last-modified',
     'location',
+    'retry-after',
     'server',
+    'set-cookie',
     'via',
+    'x-content-type-options',
+    'x-frame-options',
+    'x-runtime',
+    'x-served-by',
+    'x-xss-protection',
 ]
 _HEADER_BLACKLIST = [
     # Request
@@ -164,10 +178,13 @@ _HEADER_BLACKLIST = [
     'accept-ranges',
     'cache-control',
     'connection',
+    'strict-transport-security',
+    'transfer-encoding',
     'vary',
     'x-cache',
     'x-cache-hits',
-    'x-served-by',
+    'x-request-id',
+    'x-served-time',
     'x-timer',
     
     # Internal
@@ -184,6 +201,65 @@ def _filter_headers(headers, header_type_title):
         else:  # graylist
             print('  - Removing unrecognized %s: %s' % (header_type_title, k))
             del headers[k]
+
+
+_ABSOLUTE_URL_RE = re.compile(r'^(https?)://([^/]*)(/.*)?$')
+
+def _reformat_absolute_urls_in_headers(headers):
+    for k in list(headers.keys()):
+        # TODO: Also handle the Referer header correctly
+        if k.lower() == 'location':
+            url_match = _ABSOLUTE_URL_RE.match(headers[k])
+            if url_match is None:
+                pass  # failed to parse header
+            else:
+                (protocol, domain, path) = url_match.groups()
+                if path is None:
+                    path = ''
+                
+                headers[k] = '/_/%s/%s%s' % (protocol, domain, path)
+
+
+_ABSOLUTE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(https?://.*?)\1')
+_ABSOLUTE_URL_BYTES_RE = re.compile(rb'^(https?)://([^/]*)(/.*)?$')
+
+def _reformat_absolute_urls_in_content(resource_content, resource_headers):
+    """
+    If specified resource is an HTML document, replaces any obvious absolute
+    URL references with references of the format "/_/http/..." that will be
+    interpreted by the caching proxy appropriately.
+    
+    Otherwise returns the original content unmodified.
+    """
+    is_html = False
+    for (k, v) in resource_headers.items():
+        if k.lower() == 'content-type':
+            is_html = 'text/html' in v  # HACK: Loose test
+            break
+    
+    if not is_html:
+        return resource_content
+    
+    try:
+        content_bytes = resource_content.read()
+    finally:
+        resource_content.close()
+    
+    def urlrepl(match_in_html):
+        (quote, url) = match_in_html.groups()
+        
+        url_match = _ABSOLUTE_URL_BYTES_RE.match(url)
+        (protocol, domain, path) = url_match.groups()
+        if path is None:
+            path = b''
+        
+        # TODO: After upgrading to Python 3.5+, replace the following code with:
+        #       b'%b%b%b' % (quote, b'/_/%b/%b%b' % (protocol, domain, path), quote)
+        return quote + (b'/_/' + protocol + b'/' + domain + path) + quote
+    
+    content_bytes = _ABSOLUTE_URL_BYTES_IN_HTML_RE.sub(urlrepl, content_bytes)
+    
+    return BytesIO(content_bytes)
 
 
 class HttpResourceCache:
