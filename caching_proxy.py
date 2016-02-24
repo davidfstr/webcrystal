@@ -85,7 +85,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             
             # Filter request headers before sending to origin server
             _filter_headers(request_headers, 'request header')
-            _reformat_absolute_urls_in_headers(request_headers)
+            _reformat_absolute_urls_in_headers(request_headers, self._origin_host)
             
             response = requests.get(
                 request_url,
@@ -122,7 +122,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         # Filter response headers before sending to client
         _filter_headers(response_headers, 'response header')
-        _reformat_absolute_urls_in_headers(response_headers)
+        _reformat_absolute_urls_in_headers(response_headers, self._origin_host)
         
         # Filter response content before sending to client
         resource_content = _reformat_absolute_urls_in_content(resource_content, response_headers)
@@ -205,9 +205,11 @@ def _filter_headers(headers, header_type_title):
 
 _ABSOLUTE_URL_RE = re.compile(r'^(https?)://([^/]*)(/.*)?$')
 
-def _reformat_absolute_urls_in_headers(headers):
+_REFERER_LONG_RE = re.compile(r'^https?://[^/]*/_/(https?)/([^/]*)(/.*)?$')
+_REFERER_SHORT_RE = re.compile(r'^(https?)://[^/]*(/.*)?$')
+
+def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
     for k in list(headers.keys()):
-        # TODO: Also handle the Referer header correctly
         if k.lower() == 'location':
             url_match = _ABSOLUTE_URL_RE.match(headers[k])
             if url_match is None:
@@ -218,6 +220,29 @@ def _reformat_absolute_urls_in_headers(headers):
                     path = ''
                 
                 headers[k] = '/_/%s/%s%s' % (protocol, domain, path)
+        
+        elif k.lower() == 'referer':
+            referer = headers[k]
+            
+            m = _REFERER_LONG_RE.match(referer)
+            if m is not None:
+                (protocol, domain, path) = m.groups()
+                if path is None:
+                    path = ''
+                
+                headers[k] = '%s://%s%s' % (protocol, domain, path)
+            
+            else:
+                m = _REFERER_SHORT_RE.match(referer)
+                if m is not None:
+                    (protocol, path) = m.groups()
+                    if path is None:
+                        path = ''
+                    
+                    headers[k] = '%s://%s%s' % (protocol, default_origin_domain, path)
+                
+                else:
+                    pass  # failed to parse header
 
 
 _ABSOLUTE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(https?://.*?)\1')
