@@ -54,9 +54,11 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             f.close()
     
     def _send_head(self):
+        request_url = 'http://%s%s' % (self._origin_host, self.path)
+        
         # Try fetch requested resource from cache.
         # If missing fetch the resource from the origin and add it to the cache.
-        resource = self._cache.get(self.path)
+        resource = self._cache.get(request_url)
         if resource is None:
             request_headers = dict(self.headers)
             for key in list(request_headers.keys()):
@@ -65,7 +67,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             request_headers['Host'] = self._origin_host
             
             response = requests.get(
-                'http://%s%s' % (self._origin_host, self.path),
+                request_url,
                 headers=request_headers,
                 allow_redirects=False
             )
@@ -83,14 +85,14 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             
             response_content = BytesIO(response_content_bytes)
             try:
-                self._cache.put(self.path, HttpResource(
+                self._cache.put(request_url, HttpResource(
                     headers=response_headers,
                     content=response_content
                 ))
             finally:
                 response_content.close()
             
-            resource = self._cache.get(self.path)
+            resource = self._cache.get(request_url)
             assert resource is not None
         
         self.send_response(int(resource.headers['X-Status-Code']))
@@ -122,25 +124,25 @@ class HttpResourceCache:
         # Create empty cache if cache does not already exist
         if not os.path.exists(root_dirpath):
             os.mkdir(root_dirpath)
-            with self._open_paths('w') as f:
+            with self._open_index('w') as f:
                 f.write('')
         
         # Load cache
-        with self._open_paths('r') as f:
-            self._paths = f.read().split('\n')
-            if self._paths == ['']:
-                self._paths = []
+        with self._open_index('r') as f:
+            self._urls = f.read().split('\n')
+            if self._urls == ['']:
+                self._urls = []
         # NOTE: It is possible for the cache to contain multiple IDs for the
         #       same path under rare circumstances. In that case the last ID wins.
-        self._resource_id_for_path = {path: i for (i, path) in enumerate(self._paths)}
+        self._resource_id_for_url = {url: i for (i, url) in enumerate(self._urls)}
     
-    def get(self, path):
+    def get(self, url):
         """
-        Gets the HttpResource at the specified path from this cache,
+        Gets the HttpResource at the specified url from this cache,
         or None if the specified resource is not in the cache.
         """
         with self._lock:
-            resource_id = self._resource_id_for_path.get(path)
+            resource_id = self._resource_id_for_url.get(url)
             if resource_id is None:
                 return None
         
@@ -152,20 +154,20 @@ class HttpResourceCache:
             content=f,
         )
     
-    def put(self, path, resource):
+    def put(self, url, resource):
         """
         Puts the specified HttpResource into this cache, replacing any previous
-        resource with the same path.
+        resource with the same url.
         
-        If two difference resources are put into this cache at the same path
+        If two difference resources are put into this cache at the same url
         concurrently, the last one put into the cache will eventually win.
         """
         # Reserve resource ID (if new)
         with self._lock:
-            resource_id = self._resource_id_for_path.get(path)
+            resource_id = self._resource_id_for_url.get(url)
             if resource_id is None:
-                resource_id = len(self._paths)
-                self._paths.append('')  # reserve space
+                resource_id = len(self._urls)
+                self._urls.append('')  # reserve space
                 resource_id_is_new = True
             else:
                 resource_id_is_new = False
@@ -178,21 +180,21 @@ class HttpResourceCache:
         
         # Commit resource ID (if new)
         if resource_id_is_new:
-            # NOTE: Only commit an entry to self._paths AFTER the resource
+            # NOTE: Only commit an entry to self._urls AFTER the resource
             #       content has been written to disk successfully.
             with self._lock:
-                self._paths[resource_id] = path
-                old_resource_id = self._resource_id_for_path.get(path)
+                self._urls[resource_id] = url
+                old_resource_id = self._resource_id_for_url.get(url)
                 if old_resource_id is None or old_resource_id < resource_id:
-                    self._resource_id_for_path[path] = resource_id
+                    self._resource_id_for_url[url] = resource_id
     
     def flush(self):
         """
         Flushes all pending changes made to this cache to disk.
         """
         # TODO: Make this operation atomic, even if the write fails in the middle.
-        with self._open_paths('w') as f:
-            f.write('\n'.join(self._paths))
+        with self._open_index('w') as f:
+            f.write('\n'.join(self._urls))
     
     def close(self):
         """
@@ -202,8 +204,8 @@ class HttpResourceCache:
     
     # === Utility ===
     
-    def _open_paths(self, mode='r'):
-        return open(os.path.join(self._root_dirpath, '_paths'), mode, encoding='utf8')
+    def _open_index(self, mode='r'):
+        return open(os.path.join(self._root_dirpath, '_index'), mode, encoding='utf8')
     
     def _open_header(self, resource_id, mode='r'):
         return open(os.path.join(self._root_dirpath, '%d.headers' % resource_id), mode, encoding='utf8')
