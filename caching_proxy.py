@@ -37,8 +37,6 @@ class ThreadedHttpServer(ThreadingMixIn, HTTPServer):
     pass
 
 
-_ABSOLUTE_REQUEST_URL_RE = re.compile(r'^/_/(https?)/([^/]+)(/.*)$')
-
 class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     """
     HTTP request handler that serves requests from an HttpResourceCache.
@@ -63,18 +61,39 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             f.close()
     
     def _send_head(self):
-        # Recognize paths like "/_/http/xkcd.com/" and interpret them as
-        # absolute URLs like "http://xkcd.com/".
-        if self.path.startswith('/_/'):
-            m = _ABSOLUTE_REQUEST_URL_RE.match(self.path)
-            if m is None:
-                self.send_response(400)  # Bad Request
-                self.end_headers()
-                return BytesIO(b'')
+        # Recognize proxy-specific paths like "/_/http/xkcd.com/" and 
+        # interpret them as absolute URLs like "http://xkcd.com/".
+        parsed_request_url = _parse_client_request_path(self.path, self._origin_host)
+        request_url = '%s://%s%s' % (
+            parsed_request_url.protocol,
+            parsed_request_url.domain,
+            parsed_request_url.path
+        )
+        
+        parsed_referer = None
+        for (k, v) in self.headers.items():
+            if k.lower() == 'referer':
+                parsed_referer = _try_parse_client_referer(v, self._origin_host)
+                break
+        
+        # If referrer is a proxy absolute URL but the request URL is a
+        # regular absolute URL, redirect the request URL to also be a
+        # proxy absolute URL at the referrer domain.
+        if parsed_referer is not None and \
+                parsed_referer.is_proxy and \
+                not parsed_request_url.is_proxy:
+            redirect_url = _format_proxy_url(
+                protocol=parsed_request_url.protocol,
+                domain=parsed_request_url.domain,
+                path=parsed_request_url.path
+            )
             
-            request_url = '%s://%s%s' % m.groups()
-        else:
-            request_url = 'http://%s%s' % (self._origin_host, self.path)
+            self.send_response(301)  # Moved Permanently
+            self.send_header('Location', redirect_url)
+            self.send_header('Vary', 'Referer')
+            self.end_headers()
+            
+            return BytesIO(b'')
         
         # Try fetch requested resource from cache.
         # If missing fetch the resource from the origin and add it to the cache.
@@ -86,7 +105,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             for key in list(request_headers.keys()):
                 if key.lower() == 'host':
                     del request_headers[key]
-            request_headers['Host'] = self._origin_host
+            request_headers['Host'] = parsed_request_url.domain
             
             # Filter request headers before sending to origin server
             _filter_headers(request_headers, 'request header')
@@ -139,6 +158,35 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         
         return resource_content
+
+
+_ABSOLUTE_REQUEST_URL_RE = re.compile(r'^/_/(https?)/([^/]+)(/.*)$')
+
+_ClientRequestUrl = namedtuple('_ClientRequestUrl',
+    ['protocol', 'domain', 'path', 'is_proxy'])
+
+def _parse_client_request_path(path, default_origin_domain):
+    if path.startswith('/_/'):
+        m = _ABSOLUTE_REQUEST_URL_RE.match(path)
+        if m is None:
+            self.send_response(400)  # Bad Request
+            self.end_headers()
+            return BytesIO(b'')
+        (protocol, domain, path) = m.groups()
+        
+        return _ClientRequestUrl(
+            protocol=protocol,
+            domain=domain,
+            path=path,
+            is_proxy=True
+        )
+    else:
+        return _ClientRequestUrl(
+            protocol='http',
+            domain=default_origin_domain,
+            path=path,
+            is_proxy=False
+        )
 
 
 _HEADER_WHITELIST = [
@@ -210,9 +258,6 @@ def _filter_headers(headers, header_type_title):
 
 _ABSOLUTE_URL_RE = re.compile(r'^(https?)://([^/]*)(/.*)?$')
 
-_REFERER_LONG_RE = re.compile(r'^https?://[^/]*/_/(https?)/([^/]*)(/.*)?$')
-_REFERER_SHORT_RE = re.compile(r'^(https?)://[^/]*(/.*)?$')
-
 def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
     for k in list(headers.keys()):
         if k.lower() == 'location':
@@ -224,30 +269,58 @@ def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
                 if path is None:
                     path = ''
                 
-                headers[k] = '/_/%s/%s%s' % (protocol, domain, path)
+                headers[k] = _format_proxy_url(protocol, domain, path)
         
         elif k.lower() == 'referer':
             referer = headers[k]
             
-            m = _REFERER_LONG_RE.match(referer)
-            if m is not None:
-                (protocol, domain, path) = m.groups()
-                if path is None:
-                    path = ''
-                
-                headers[k] = '%s://%s%s' % (protocol, domain, path)
-            
-            else:
-                m = _REFERER_SHORT_RE.match(referer)
-                if m is not None:
-                    (protocol, path) = m.groups()
-                    if path is None:
-                        path = ''
-                    
-                    headers[k] = '%s://%s%s' % (protocol, default_origin_domain, path)
-                
-                else:
-                    pass  # failed to parse header
+            parsed_referer = _try_parse_client_referer(referer, default_origin_domain)
+            if parsed_referer is not None:
+                headers[k] = '%s://%s%s' % (
+                    parsed_referer.protocol,
+                    parsed_referer.domain,
+                    parsed_referer.path
+                )
+
+
+def _format_proxy_url(protocol, domain, path):
+    return '/_/%s/%s%s' % (protocol, domain, path)
+
+
+_REFERER_LONG_RE = re.compile(r'^https?://[^/]*/_/(https?)/([^/]*)(/.*)?$')
+_REFERER_SHORT_RE = re.compile(r'^(https?)://[^/]*(/.*)?$')
+
+_ClientReferer = namedtuple('_ClientReferer',
+    ['protocol', 'domain', 'path', 'is_proxy'])
+
+def _try_parse_client_referer(referer, default_origin_domain):
+    m = _REFERER_LONG_RE.match(referer)
+    if m is not None:
+        (protocol, domain, path) = m.groups()
+        if path is None:
+            path = ''
+        
+        return _ClientReferer(
+            protocol=protocol,
+            domain=domain,
+            path=path,
+            is_proxy=True
+        )
+    
+    m = _REFERER_SHORT_RE.match(referer)
+    if m is not None:
+        (protocol, path) = m.groups()
+        if path is None:
+            path = ''
+        
+        return _ClientReferer(
+            protocol=protocol,
+            domain=default_origin_domain,
+            path=path,
+            is_proxy=False
+        )
+    
+    return None  # failed to parse header
 
 
 _ABSOLUTE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(https?://.*?)\1')
