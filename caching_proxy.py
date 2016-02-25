@@ -234,20 +234,16 @@ def _filter_headers(headers, header_type_title):
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Filter Header URLs
 
-_ABSOLUTE_URL_RE = re.compile(r'^(https?)://([^/]*)(/.*)?$')
-
 def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
     for k in list(headers.keys()):
         if k.lower() == 'location':
-            url_match = _ABSOLUTE_URL_RE.match(headers[k])
-            if url_match is None:
-                pass  # failed to parse header
-            else:
-                (protocol, domain, path) = url_match.groups()
-                if path is None:
-                    path = ''
-
-                headers[k] = _format_proxy_url(protocol, domain, path)
+            parsed_url = _try_parse_absolute_url(headers[k])
+            if parsed_url is not None:
+                headers[k] = _format_proxy_url(
+                    protocol=parsed_url.parsed_url,
+                    domain=parsed_url.domain,
+                    path=parsed_url.path,
+                )
 
         elif k.lower() == 'referer':
             referer = headers[k]
@@ -265,7 +261,6 @@ def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
 # Filter Content
 
 _ABSOLUTE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(https?://.*?)\1')
-_ABSOLUTE_URL_BYTES_RE = re.compile(rb'^(https?)://([^/]*)(/.*)?$')
 
 def _reformat_absolute_urls_in_content(resource_content, resource_headers):
     """
@@ -291,15 +286,17 @@ def _reformat_absolute_urls_in_content(resource_content, resource_headers):
 
     def urlrepl(match_in_html):
         (quote, url) = match_in_html.groups()
+        
+        parsed_url = _try_parse_absolute_url_in_bytes(url)
+        # TODO: Handle this case
+        if parsed_url is None:
+            raise NotImplementedError()
 
-        url_match = _ABSOLUTE_URL_BYTES_RE.match(url)
-        (protocol, domain, path) = url_match.groups()
-        if path is None:
-            path = b''
-
-        # TODO: After upgrading to Python 3.5+, replace the following code with:
-        #       b'%b%b%b' % (quote, b'/_/%b/%b%b' % (protocol, domain, path), quote)
-        return quote + (b'/_/' + protocol + b'/' + domain + path) + quote
+        return quote + _format_proxy_url_in_bytes(
+            protocol=parsed_url.protocol,
+            domain=parsed_url.domain,
+            path=parsed_url.path
+        ) + quote
 
     content_bytes = _ABSOLUTE_URL_BYTES_IN_HTML_RE.sub(urlrepl, content_bytes)
 
@@ -374,8 +371,53 @@ def _try_parse_client_referer(referer, default_origin_domain):
     return None  # failed to parse header
 
 
+_Url = namedtuple('_Url', ['protocol', 'domain', 'path'])
+
+
+_ABSOLUTE_URL_RE = re.compile(r'^(https?)://([^/]*)(/.*)?$')
+
+def _try_parse_absolute_url(url):
+    url_match = _ABSOLUTE_URL_RE.match(headers[k])
+    if url_match is None:
+        return None
+    
+    (protocol, domain, path) = url_match.groups()
+    if path is None:
+        path = ''
+    
+    return _Url(
+        protocol=protocol,
+        domain=domain,
+        path=path
+    )
+
+
+_ABSOLUTE_URL_BYTES_RE = re.compile(rb'^(https?)://([^/]*)(/.*)?$')
+
+def _try_parse_absolute_url_in_bytes(url):
+    url_match = _ABSOLUTE_URL_BYTES_RE.match(url)
+    if url_match is None:
+        return None
+    
+    (protocol, domain, path) = url_match.groups()
+    if path is None:
+        path = b''
+    
+    return _Url(
+        protocol=protocol,
+        domain=domain,
+        path=path
+    )
+
+
 def _format_proxy_url(protocol, domain, path):
     return '/_/%s/%s%s' % (protocol, domain, path)
+
+
+def _format_proxy_url_in_bytes(protocol, domain, path):
+    # TODO: After upgrading to Python 3.5+, replace the following code with:
+    #       b'/_/%b/%b%b' % (protocol, domain, path
+    return b'/_/' + protocol + b'/' + domain + path
 
 
 # ------------------------------------------------------------------------------
