@@ -12,6 +12,10 @@ python3 caching_proxy.py xkcd.com 6969 xkcd.cache
 
 Then you could visit <http://localhost:6969/> to have the same effect as visiting <http://xkcd.com/> directly, except that repeated requests will be cached.
 
+### Requirements
+
+* Python 3.4+
+
 ### Known Limitations
 
 * Only requests from the origin domain will be cached. No other domains will be cached.
