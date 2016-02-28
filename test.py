@@ -16,6 +16,64 @@ from unittest import skip, TestCase
 # ------------------------------------------------------------------------------
 # Tests
 
+_HOST = '127.0.0.1'
+_PROXY_PORT = 9000
+_DEFAULT_DOMAIN_PORT = 9001
+_OTHER_DOMAIN_PORT = 9002
+
+_PROXY_INFO = caching_proxy.ProxyInfo(host=_HOST, port=_PROXY_PORT)
+
+_DEFAULT_DOMAIN = '%s:%s' % (_HOST, _DEFAULT_DOMAIN_PORT)
+_OTHER_DOMAIN = '%s:%s' % (_HOST, _OTHER_DOMAIN_PORT)
+
+_DEFAULT_DOMAIN_AS_IP = _DEFAULT_DOMAIN
+_DEFAULT_DOMAIN_AS_DNS = 'localhost:%s' % _DEFAULT_DOMAIN_PORT
+
+_PROXY_SERVER_URL = 'http://%s:%s' % (_HOST, _PROXY_PORT)
+_DEFAULT_SERVER_URL = 'http://%s' % _DEFAULT_DOMAIN
+_OTHER_SERVER_URL = 'http://%s' % _OTHER_DOMAIN
+
+
+def forbid_unless_referer_starts_with(required_referer_prefix, ok_response):
+    def generate_response(path, headers):
+        referer = {k.lower(): v for (k, v) in headers.items()}.get('referer')
+        if referer is None or not referer.startswith(required_referer_prefix):
+            return dict(status_code=403)  # Forbidden
+        else:
+            return ok_response
+    
+    return generate_response
+
+def modified_long_ago(ok_response):
+    def generate_response(path, headers):
+        if_modified_since = {k.lower(): v for (k, v) in headers.items()}.get('if-modified-since')
+        if if_modified_since is not None:
+            return dict(status_code=304)  # Not Modified
+        else:
+            return ok_response
+    
+    return generate_response
+
+def no_weird_headers(ok_response):
+    def generate_response(path, headers):
+        has_weird_headers = 'X-Weird-Request-Header' in headers.keys()
+        if has_weird_headers:
+            return dict(status_code=400)  # Bad Request
+        else:
+            return ok_response
+    
+    return generate_response
+
+def on_host(required_host, ok_response):
+    def generate_response(path, headers):
+        host = {k.lower(): v for (k, v) in headers.items()}.get('host')
+        if host is None or host != required_host:
+            return dict(status_code=404)  # Not Found
+        else:
+            return ok_response
+    
+    return generate_response
+
 _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -24,7 +82,23 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/posts/': dict(
         headers=[('Content-Type', 'text/html')],
         body='<html>Posts</html>'
-    )
+    ),
+    '/posts/image_no_hotlinking.png': forbid_unless_referer_starts_with(_DEFAULT_SERVER_URL, dict(
+        headers=[('Content-Type', 'image/png')],
+        body=b''
+    )),
+    '/posts/image_modified_long_ago.png': modified_long_ago(dict(
+        headers=[('Content-Type', 'image/png')],
+        body=b''
+    )),
+    '/api/no_weird_headers': no_weird_headers(dict(
+        headers=[('Content-Type', 'application/json')],
+        body='{}'
+    )),
+    '/posts/only_on_localhost.html': on_host(_DEFAULT_DOMAIN_AS_DNS, dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html>Most pages will not load if the Host header is wrong.</html>'
+    )),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -35,29 +109,19 @@ _OTHER_SERVER_RESPONSES = {  # like a social network
     '/feed/': dict(
         headers=[('Content-Type', 'text/html')],
         body='<html>Feed</html>'
-    )
+    ),
+    '/feed/landing_page_from_blog.html': forbid_unless_referer_starts_with(_DEFAULT_SERVER_URL, dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html>Thanks for visiting us from fooblog!</html>'
+    )),
 }
 
 class CachingProxyTests(TestCase):
     @classmethod
     def setUpClass(cls):
-        host = '127.0.0.1'
-        proxy_port = 9000
-        default_domain_port = 9001
-        other_domain_port = 9002
-        
-        cls._proxy_info = caching_proxy.ProxyInfo(host=host, port=proxy_port)
-        
-        cls._default_domain = '%s:%s' % (host, default_domain_port)
-        cls._other_domain = '%s:%s' % (host, other_domain_port)
-        
-        cls._proxy_server_url = 'http://%s:%s' % (host, proxy_port)
-        cls._default_server_url = 'http://%s' % cls._default_domain
-        cls._other_server_url = 'http://%s' % cls._other_domain
-        
-        cls._proxy_server = start_proxy_server(proxy_port, cls._default_domain)
-        cls._default_server = start_origin_server(default_domain_port, _DEFAULT_SERVER_RESPONSES)
-        cls._other_server = start_origin_server(other_domain_port, _OTHER_SERVER_RESPONSES)
+        cls._proxy_server = start_proxy_server(_PROXY_PORT, _DEFAULT_DOMAIN)
+        cls._default_server = start_origin_server(_DEFAULT_DOMAIN_PORT, _DEFAULT_SERVER_RESPONSES)
+        cls._other_server = start_origin_server(_OTHER_DOMAIN_PORT, _OTHER_SERVER_RESPONSES)
     
     @classmethod
     def tearDownClass(cls):
@@ -79,7 +143,7 @@ class CachingProxyTests(TestCase):
     #   -> http://__OTHER_DOMAIN__/__PATH__
     def test_request_of_unqualified_path_with_referer_uses_referer_domain(self):
         response = self._get('/', {
-            'Referer': format_proxy_url('http', self._other_domain, '/feed/', proxy_info=self._proxy_info)
+            'Referer': format_proxy_url('http', _OTHER_DOMAIN, '/feed/', proxy_info=_PROXY_INFO)
         }, allow_redirects=True)
         self.assertEqual(200, response.status_code)
         self.assertEqual('<html>Other server</html>', response.text)
@@ -87,7 +151,7 @@ class CachingProxyTests(TestCase):
     # GET/HEAD of /_/http/__OTHER_DOMAIN__/__PATH__
     #   -> http://__OTHER_DOMAIN__/__PATH__
     def test_request_of_qualified_http_path_works(self):
-        response = self._get('/_/http/%s/feed/' % self._other_domain)
+        response = self._get(format_proxy_path('http', _OTHER_DOMAIN, '/feed/'))
         self.assertEqual(200, response.status_code)
         self.assertEqual('<html>Feed</html>', response.text)
     
@@ -102,32 +166,64 @@ class CachingProxyTests(TestCase):
     # === Request Header Processing: Client -> Proxy -> Server ===
     
     # Allows Request Header: User-Agent, Referer
-    @skip('not yet automated')
     def test_allows_certain_headers_when_forwarding_request_to_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/image_no_hotlinking.png'),
+            {'Referer': _DEFAULT_SERVER_URL + '/posts/'})
+        self.assertEqual(200, response.status_code)
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/image_no_hotlinking.png'),
+            {})
+        self.assertEqual(403, response.status_code)
     
     # Blocks Request Header: If-Modified-Since
-    @skip('not yet automated')
     def test_blocks_certain_headers_when_forwarding_request_to_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/image_modified_long_ago.png'),
+            {})
+        self.assertEqual(200, response.status_code)
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/image_modified_long_ago.png'),
+            {'If-Modified-Since': 'Sat, 29 Oct 1994 19:43:31 GMT'})
+        self.assertEqual(200, response.status_code)  # blocked, != 304
     
     # Blocks Request Header: X-Weird-Request-Header
-    @skip('not yet automated')
     def test_blocks_unknown_headers_when_forwarding_request_to_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/no_weird_headers'),
+            {})
+        self.assertEqual(200, response.status_code)
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/no_weird_headers'),
+            {'X-Weird-Request-Header': 'boom'})
+        self.assertEqual(200, response.status_code)  # blocked, != 400
     
     # Rewrites Request Header: Host
-    @skip('not yet automated')
     def test_rewrites_host_header_when_forwarding_request_to_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN_AS_DNS, '/posts/only_on_localhost.html'))
+        self.assertEqual(200, response.status_code)
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN_AS_IP, '/posts/only_on_localhost.html'))
+        self.assertEqual(404, response.status_code)
     
     # Rewrites Request Header: Referer
-    @skip('not yet automated')
     def test_rewrites_referer_header_when_forwarding_request_to_server(self):
         # ...when coming from http://__PROXY_DOMAIN__/__PATH__
-        # ...when coming from http://__PROXY_DOMAIN__/_/http/__DOMAIN__/__PATH__
-        # ...when coming from http://__OTHER_DOMAIN__/__PATH__
-        pass
+        response = self._get(
+            format_proxy_path('http', _OTHER_DOMAIN, '/feed/landing_page_from_blog.html'),
+            {'Referer': _PROXY_SERVER_URL + '/redirect_to_social_network.html'})
+        self.assertEqual(200, response.status_code)
+        
+        # ...when coming from http://__PROXY_DOMAIN__/_/http/__DEFAULT_DOMAIN__/__PATH__
+        response = self._get(
+            format_proxy_path('http', _OTHER_DOMAIN, '/feed/landing_page_from_blog.html'),
+            {'Referer': format_proxy_url('http', _DEFAULT_DOMAIN, '/redirect_to_social_network.html', proxy_info=_PROXY_INFO)})
+        self.assertEqual(200, response.status_code)
     
     # === Response Header Processing: Client <- Proxy <- Server ===
     
@@ -183,12 +279,28 @@ class CachingProxyTests(TestCase):
     def test_retains_relative_urls_in_content_when_returning_response_from_server(self):
         pass
     
+    # === Cache Behavior ===
+    
+    @skip('not yet automated')
+    def test_returns_cached_response_by_default_if_available(self):
+        pass
+    
+    # [Cache-Control: no-cache] should disable cache on a per-request basis
+    @skip('not yet automated')
+    def test_always_returns_fresh_response_if_cache_disabled(self):
+        pass
+    
     # === Utility ===
     
-    def _get(self, path, headers={}, *, allow_redirects=False):
+    def _get(self, path, headers={}, *, allow_redirects=False, cache=False):
+        final_headers = dict(headers)  # clone
+        if not cache:
+            final_headers['Cache-Control'] = 'no-cache'
+            final_headers['X-Pragma'] = 'no-cache'
+        
         response = requests.get(
-            self._proxy_server_url + path,
-            headers=headers,
+            _PROXY_SERVER_URL + path,
+            headers=final_headers,
             allow_redirects=allow_redirects
         )
         return response
@@ -269,12 +381,12 @@ class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
         
         # Send header
         self.send_response(response.get('status_code', 200))
-        for (k, v) in response['headers']:
+        for (k, v) in response.get('headers', {}):
             self.send_header(k, v)
         self.end_headers()
         
         # Prepare to send body
-        response_body = response['body']
+        response_body = response.get('body', b'')
         if isinstance(response_body, str):
             response_body = response_body.encode('utf8')
         return BytesIO(response_body)

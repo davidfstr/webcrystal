@@ -80,6 +80,8 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             f.close()
     
     def _send_head(self):
+        canonical_request_headers = {k.lower(): v for (k, v) in self.headers.items()}  # cache
+        
         # Recognize proxy-specific paths like "/_/http/xkcd.com/" and 
         # interpret them as absolute URLs like "http://xkcd.com/".
         parsed_request_url = _parse_client_request_path(self.path, self._default_origin_domain)
@@ -89,11 +91,10 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             parsed_request_url.path
         )
         
-        parsed_referer = None
-        for (k, v) in self.headers.items():
-            if k.lower() == 'referer':
-                parsed_referer = _try_parse_client_referer(v, self._default_origin_domain)
-                break
+        request_referer = canonical_request_headers.get('referer')
+        parsed_referer = \
+            None if request_referer is None \
+            else _try_parse_client_referer(request_referer, self._default_origin_domain)
         
         # If referrer is a proxy absolute URL but the request URL is a
         # regular absolute URL, redirect the request URL to also be a
@@ -115,11 +116,23 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             
             return BytesIO(b'')
         
+        # If client performs a hard refresh (Command-Shift-R in Chrome),
+        # ignore any cached response and refetch a fresh resource from the origin server.
+        request_cache_control = canonical_request_headers.get('cache-control')
+        request_pragma = canonical_request_headers.get('pragma')
+        should_disable_cache = (
+            'no-cache' in request_cache_control or  # HACK: fuzzy match
+            'no-cache' in request_pragma            # HACK: fuzzy match
+        )
+        
         # Try fetch requested resource from cache.
         # If missing fetch the resource from the origin and add it to the cache.
         resource = self._cache.get(request_url)
-        if resource is None:
-            request_headers = dict(self.headers)
+        if resource is None or should_disable_cache:
+            if should_disable_cache and resource is not None:
+                resource.content.close()  # dispose
+            
+            request_headers = dict(self.headers)  # clone
             
             # Set Host request header appropriately
             for key in list(request_headers.keys()):
@@ -128,7 +141,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             request_headers['Host'] = parsed_request_url.domain
             
             # Filter request headers before sending to origin server
-            _filter_headers(request_headers, 'request header')
+            _filter_headers(request_headers, 'request header', is_quiet=self._is_quiet)
             _reformat_absolute_urls_in_headers(
                 request_headers,
                 proxy_info=self._proxy_info,
@@ -168,7 +181,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         resource_content = resource.content
         
         # Filter response headers before sending to client
-        _filter_headers(response_headers, 'response header')
+        _filter_headers(response_headers, 'response header', is_quiet=self._is_quiet)
         _reformat_absolute_urls_in_headers(
             response_headers,
             proxy_info=self._proxy_info,
@@ -236,8 +249,10 @@ _HEADER_BLACKLIST = [
     'cache-control',
     'connection',
     'if-modified-since',
+    'if-none-match',
     'pragma',
     'upgrade-insecure-requests',
+    'x-pragma',
 
     # Response
     'accept-ranges',
@@ -256,7 +271,7 @@ _HEADER_BLACKLIST = [
     'x-status-code',
 ]
 
-def _filter_headers(headers, header_type_title):
+def _filter_headers(headers, header_type_title, *, is_quiet):
     for k in list(headers.keys()):
         k_lower = k.lower()
         if k_lower in _HEADER_WHITELIST:
@@ -264,7 +279,8 @@ def _filter_headers(headers, header_type_title):
         elif k_lower in _HEADER_BLACKLIST:
             del headers[k]
         else:  # graylist
-            print('  - Removing unrecognized %s: %s' % (header_type_title, k))
+            if not is_quiet:
+                print('  - Removing unrecognized %s: %s' % (header_type_title, k))
             del headers[k]
 
 
