@@ -1,4 +1,5 @@
 import caching_proxy
+from caching_proxy import _format_proxy_url as format_proxy_url
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 from multiprocessing import Process
@@ -14,10 +15,10 @@ from unittest import skip, TestCase
 # ------------------------------------------------------------------------------
 # Tests
 
-_DEFAULT_DOMAIN_RESPONSES = {  # like a blog
+_DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/': dict(
         headers=[('Content-Type', 'text/html')],
-        body='<html>Default domain</html>'
+        body='<html>Default server</html>'
     ),
     '/posts/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -25,10 +26,10 @@ _DEFAULT_DOMAIN_RESPONSES = {  # like a blog
     )
 }
 
-_OTHER_DOMAIN_RESPONSES = {  # like a social network
+_OTHER_SERVER_RESPONSES = {  # like a social network
     '/': dict(
         headers=[('Content-Type', 'text/html')],
-        body='<html>Other domain</html>'
+        body='<html>Other server</html>'
     ),
     '/feed/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -39,20 +40,23 @@ _OTHER_DOMAIN_RESPONSES = {  # like a social network
 class CachingProxyTests(TestCase):
     @classmethod
     def setUpClass(cls):
+        host = '127.0.0.1'
         proxy_port = 9000
         default_domain_port = 9001
         other_domain_port = 9002
         
-        default_domain = '127.0.0.1:%s' % default_domain_port
+        cls._proxy_info = caching_proxy.ProxyInfo(host=host, port=proxy_port)
         
-        cls._proxy_server_url = 'http://127.0.0.1:%s' % proxy_port
-        cls._default_server_url = 'http://%s' % default_domain
-        cls._other_server_url = 'http://127.0.0.1:%s' % other_domain_port
+        cls._default_domain = '%s:%s' % (host, default_domain_port)
+        cls._other_domain = '%s:%s' % (host, other_domain_port)
         
-        cls._proxy_server = start_proxy_server(proxy_port, default_domain)
-        cls._default_server = start_origin_server(default_domain_port, _DEFAULT_DOMAIN_RESPONSES)
-        cls._other_server = start_origin_server(other_domain_port, _OTHER_DOMAIN_RESPONSES)
+        cls._proxy_server_url = 'http://%s:%s' % (host, proxy_port)
+        cls._default_server_url = 'http://%s' % cls._default_domain
+        cls._other_server_url = 'http://%s' % cls._other_domain
         
+        cls._proxy_server = start_proxy_server(proxy_port, cls._default_domain)
+        cls._default_server = start_origin_server(default_domain_port, _DEFAULT_SERVER_RESPONSES)
+        cls._other_server = start_origin_server(other_domain_port, _OTHER_SERVER_RESPONSES)
     
     @classmethod
     def tearDownClass(cls):
@@ -66,16 +70,18 @@ class CachingProxyTests(TestCase):
     #   -> http://__DEFAULT_DOMAIN__/__PATH__
     # TODO: Consider instead issuing an HTTP 3xx redirect to a qualified path.
     def test_request_of_unqualified_path_without_referer_reinterprets_with_default_domain(self):
-        response = self._get('/posts/', [])
+        response = self._get('/posts/', {})
         self.assertEqual(200, response.status_code)
         self.assertEqual('<html>Posts</html>', response.text)
     
     # GET/HEAD of /__PATH__ when Referer is __OTHER_DOMAIN__
     #   -> http://__OTHER_DOMAIN__/__PATH__
-    @skip('not yet automated')
     def test_request_of_unqualified_path_with_referer_uses_referer_domain(self):
-        # TODO: Extract test server logic to enable simulation of other domains.
-        pass
+        response = self._get('/', {
+            'Referer': format_proxy_url('http', self._other_domain, '/feed/', proxy_info=self._proxy_info)
+        }, allow_redirects=True)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('<html>Other server</html>', response.text)
     
     # GET/HEAD of /_/http/__DOMAIN__/__PATH__
     #   -> http://__DOMAIN__/__PATH__
@@ -93,11 +99,11 @@ class CachingProxyTests(TestCase):
     
     # === Utility ===
     
-    def _get(self, path, headers):
+    def _get(self, path, headers, *, allow_redirects=False):
         response = requests.get(
             self._proxy_server_url + path,
             headers=headers,
-            allow_redirects=False
+            allow_redirects=allow_redirects
         )
         return response
 

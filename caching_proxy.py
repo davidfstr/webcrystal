@@ -20,8 +20,10 @@ def main(options):
     
     # Parse arguments
     (default_origin_domain, port, cache_dirpath,) = options
-    address = ''
-    port = int(port)
+    proxy_info = ProxyInfo(
+        host='127.0.0.1',
+        port=int(port),
+    )
     
     # Open cache
     cache = HttpResourceCache(cache_dirpath)
@@ -29,17 +31,23 @@ def main(options):
     
     def create_request_handler(*args):
         return CachingHTTPRequestHandler(*args,
-            default_origin_domain=default_origin_domain,
             cache=cache,
+            proxy_info=proxy_info,
+            default_origin_domain=default_origin_domain,
             is_quiet=is_quiet)
     
     if not is_quiet:
-        print('Listening on %s:%s' % (address, port))
-    httpd = ThreadedHttpServer((address, port), create_request_handler)
+        print('Listening on %s:%s' % (proxy_info.host, proxy_info.port))
+    httpd = ThreadedHttpServer(
+        (proxy_info.host, proxy_info.port),
+        create_request_handler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+
+
+ProxyInfo = namedtuple('ProxyInfo', ['host', 'port'])
 
 
 class ThreadedHttpServer(ThreadingMixIn, HTTPServer):
@@ -53,9 +61,10 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     to the cache automatically.
     """
     
-    def __init__(self, *args, default_origin_domain, cache, is_quiet):
-        self._default_origin_domain = default_origin_domain
+    def __init__(self, *args, cache, proxy_info, default_origin_domain, is_quiet):
         self._cache = cache
+        self._proxy_info = proxy_info
+        self._default_origin_domain = default_origin_domain
         self._is_quiet = is_quiet
         super().__init__(*args)
     
@@ -94,8 +103,9 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 not parsed_request_url.is_proxy:
             redirect_url = _format_proxy_url(
                 protocol=parsed_request_url.protocol,
-                domain=parsed_request_url.domain,
-                path=parsed_request_url.path
+                domain=parsed_referer.domain,
+                path=parsed_request_url.path,
+                proxy_info=self._proxy_info
             )
             
             self.send_response(301)  # Moved Permanently
@@ -119,7 +129,10 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             
             # Filter request headers before sending to origin server
             _filter_headers(request_headers, 'request header')
-            _reformat_absolute_urls_in_headers(request_headers, self._default_origin_domain)
+            _reformat_absolute_urls_in_headers(
+                request_headers,
+                proxy_info=self._proxy_info,
+                default_origin_domain=self._default_origin_domain)
             
             response = requests.get(
                 request_url,
@@ -156,10 +169,16 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         # Filter response headers before sending to client
         _filter_headers(response_headers, 'response header')
-        _reformat_absolute_urls_in_headers(response_headers, self._default_origin_domain)
+        _reformat_absolute_urls_in_headers(
+            response_headers,
+            proxy_info=self._proxy_info,
+            default_origin_domain=self._default_origin_domain)
         
         # Filter response content before sending to client
-        resource_content = _reformat_absolute_urls_in_content(resource_content, response_headers)
+        resource_content = _reformat_absolute_urls_in_content(
+            resource_content,
+            resource_headers=response_headers,
+            proxy_info=self._proxy_info)
         
         # Send headers
         self.send_response(status_code)
@@ -252,7 +271,7 @@ def _filter_headers(headers, header_type_title):
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Filter Header URLs
 
-def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
+def _reformat_absolute_urls_in_headers(headers, *, proxy_info, default_origin_domain):
     for k in list(headers.keys()):
         if k.lower() == 'location':
             parsed_url = _try_parse_absolute_url(headers[k])
@@ -261,6 +280,7 @@ def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
                     protocol=parsed_url.parsed_url,
                     domain=parsed_url.domain,
                     path=parsed_url.path,
+                    proxy_info=proxy_info,
                 )
 
         elif k.lower() == 'referer':
@@ -280,7 +300,7 @@ def _reformat_absolute_urls_in_headers(headers, default_origin_domain):
 
 _ABSOLUTE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(https?://.*?)\1')
 
-def _reformat_absolute_urls_in_content(resource_content, resource_headers):
+def _reformat_absolute_urls_in_content(resource_content, *, resource_headers, proxy_info):
     """
     If specified resource is an HTML document, replaces any obvious absolute
     URL references with references of the format "/_/http/..." that will be
@@ -303,6 +323,8 @@ def _reformat_absolute_urls_in_content(resource_content, resource_headers):
         resource_content.close()
 
     def urlrepl(match_in_html):
+        nonlocal proxy_info
+        
         (quote, url) = match_in_html.groups()
         
         parsed_url = _try_parse_absolute_url_in_bytes(url)
@@ -313,7 +335,8 @@ def _reformat_absolute_urls_in_content(resource_content, resource_headers):
         return quote + _format_proxy_url_in_bytes(
             protocol=parsed_url.protocol,
             domain=parsed_url.domain,
-            path=parsed_url.path
+            path=parsed_url.path,
+            proxy_info=proxy_info
         ) + quote
 
     content_bytes = _ABSOLUTE_URL_BYTES_IN_HTML_RE.sub(urlrepl, content_bytes)
@@ -428,14 +451,16 @@ def _try_parse_absolute_url_in_bytes(url):
     )
 
 
-def _format_proxy_url(protocol, domain, path):
-    return '/_/%s/%s%s' % (protocol, domain, path)
+def _format_proxy_url(protocol, domain, path, *, proxy_info):
+    return 'http://%s:%s/_/%s/%s%s' % (
+        proxy_info.host, proxy_info.port, protocol, domain, path)
 
 
-def _format_proxy_url_in_bytes(protocol, domain, path):
+def _format_proxy_url_in_bytes(protocol, domain, path, *, proxy_info):
+    (proxy_host, proxy_port) = (proxy_info.host.encode('utf8'), str(proxy_info.port).encode('utf8'))
     # TODO: After upgrading to Python 3.5+, replace the following code with:
-    #       b'/_/%b/%b%b' % (protocol, domain, path
-    return b'/_/' + protocol + b'/' + domain + path
+    #       percent-substitution syntax like b'/_/%b/%b%b' % (protocol, domain, path
+    return b'http://' + proxy_host + b':' + proxy_port + b'/_/' + protocol + b'/' + domain + path
 
 
 # ------------------------------------------------------------------------------
