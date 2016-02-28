@@ -451,9 +451,14 @@ def _try_parse_absolute_url_in_bytes(url):
     )
 
 
+def _format_proxy_path(protocol, domain, path):
+    return '/_/%s/%s%s' % (
+        protocol, domain, path)
+
+
 def _format_proxy_url(protocol, domain, path, *, proxy_info):
-    return 'http://%s:%s/_/%s/%s%s' % (
-        proxy_info.host, proxy_info.port, protocol, domain, path)
+    return 'http://%s:%s%s' % (
+        proxy_info.host, proxy_info.port, _format_proxy_path(protocol, domain, path))
 
 
 def _format_proxy_url_in_bytes(protocol, domain, path, *, proxy_info):

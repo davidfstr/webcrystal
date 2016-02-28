@@ -1,4 +1,5 @@
 import caching_proxy
+from caching_proxy import _format_proxy_path as format_proxy_path
 from caching_proxy import _format_proxy_url as format_proxy_url
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
@@ -70,7 +71,7 @@ class CachingProxyTests(TestCase):
     #   -> http://__DEFAULT_DOMAIN__/__PATH__
     # TODO: Consider instead issuing an HTTP 3xx redirect to a qualified path.
     def test_request_of_unqualified_path_without_referer_reinterprets_with_default_domain(self):
-        response = self._get('/posts/', {})
+        response = self._get('/posts/')
         self.assertEqual(200, response.status_code)
         self.assertEqual('<html>Posts</html>', response.text)
     
@@ -83,23 +84,23 @@ class CachingProxyTests(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual('<html>Other server</html>', response.text)
     
-    # GET/HEAD of /_/http/__DOMAIN__/__PATH__
-    #   -> http://__DOMAIN__/__PATH__
-    @skip('not yet automated')
+    # GET/HEAD of /_/http/__OTHER_DOMAIN__/__PATH__
+    #   -> http://__OTHER_DOMAIN__/__PATH__
     def test_request_of_qualified_http_path_works(self):
-        # TODO: Extract test server logic to enable simulation of other domains.
-        pass
+        response = self._get('/_/http/%s/feed/' % self._other_domain)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('<html>Feed</html>', response.text)
     
     # GET/HEAD of /_/https/__DOMAIN__/__PATH__
     #   -> https://__DOMAIN__/__PATH__
     @skip('not yet automated')
     def test_request_of_qualified_https_path_works(self):
-        # TODO: Extract test server logic to enable simulation of other domains.
+        # TODO: Implement
         pass
     
     # === Utility ===
     
-    def _get(self, path, headers, *, allow_redirects=False):
+    def _get(self, path, headers={}, *, allow_redirects=False):
         response = requests.get(
             self._proxy_server_url + path,
             headers=headers,
