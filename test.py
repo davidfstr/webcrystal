@@ -95,7 +95,92 @@ class CachingProxyTests(TestCase):
     #   -> https://__DOMAIN__/__PATH__
     @skip('not yet automated')
     def test_request_of_qualified_https_path_works(self):
-        # TODO: Implement
+        # TODO: Implement. It's a pain. Maybe the following will help:
+        #       http://code.activestate.com/recipes/442473-simple-http-server-supporting-ssl-secure-communica/
+        pass
+    
+    # === Request Header Processing: Client -> Proxy -> Server ===
+    
+    # Allows Request Header: User-Agent, Referer
+    @skip('not yet automated')
+    def test_allows_certain_headers_when_forwarding_request_to_server(self):
+        pass
+    
+    # Blocks Request Header: If-Modified-Since
+    @skip('not yet automated')
+    def test_blocks_certain_headers_when_forwarding_request_to_server(self):
+        pass
+    
+    # Blocks Request Header: X-Weird-Request-Header
+    @skip('not yet automated')
+    def test_blocks_unknown_headers_when_forwarding_request_to_server(self):
+        pass
+    
+    # Rewrites Request Header: Host
+    @skip('not yet automated')
+    def test_rewrites_host_header_when_forwarding_request_to_server(self):
+        pass
+    
+    # Rewrites Request Header: Referer
+    @skip('not yet automated')
+    def test_rewrites_referer_header_when_forwarding_request_to_server(self):
+        # ...when coming from http://__PROXY_DOMAIN__/__PATH__
+        # ...when coming from http://__PROXY_DOMAIN__/_/http/__DOMAIN__/__PATH__
+        # ...when coming from http://__OTHER_DOMAIN__/__PATH__
+        pass
+    
+    # === Response Header Processing: Client <- Proxy <- Server ===
+    
+    # Allows Response Header: Content-Type
+    @skip('not yet automated')
+    def test_allows_certain_headers_when_returning_response_from_server(self):
+        pass
+    
+    # Blocks Response Header: Strict-Transport-Security
+    @skip('not yet automated')
+    def test_blocks_certain_headers_when_returning_response_from_server(self):
+        pass
+    
+    # Blocks Response Header: X-Weird-Response-Header
+    @skip('not yet automated')
+    def test_blocks_unknown_headers_when_returning_response_from_server(self):
+        pass
+    
+    # Blocks Response Header: X-Status-Code
+    @skip('not yet automated')
+    def test_blocks_internal_headers_when_returning_response_from_server(self):
+        pass
+    
+    # Rewrites Response Header: Location
+    @skip('not yet automated')
+    def test_rewrites_location_header_when_returning_response_from_server(self):
+        pass
+    
+    # Rewrites Response Header: Content-Length (if Content-Encoding is gzip or similar)
+    @skip('not yet automated')
+    def test_rewrites_content_length_header_when_returning_compressed_response_from_server(self):
+        pass
+    
+    # === Response Content Processing: Client <- Proxy <- Server ===
+    
+    # Rewrites Response Content: absolute URLs
+    @skip('not yet automated')
+    def test_rewrites_absolute_urls_in_content_when_returning_response_from_server(self):
+        pass
+    
+    # Rewrites Response Content: protocol-relative URLs
+    @skip('not yet automated')
+    def test_rewrites_protocol_relative_urls_in_content_when_returning_response_from_server(self):
+        pass
+    
+    # Retains Response Content: site-relative URLs
+    @skip('not yet automated')
+    def test_retains_site_relative_urls_in_content_when_returning_response_from_server(self):
+        pass
+    
+    # Retains Response Content: relative URLs
+    @skip('not yet automated')
+    def test_retains_relative_urls_in_content_when_returning_response_from_server(self):
         pass
     
     # === Utility ===
