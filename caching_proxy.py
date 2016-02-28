@@ -10,9 +10,16 @@ from socketserver import ThreadingMixIn
 import sys
 
 
-def main(args):
+def main(options):
+    is_quiet = False
+    
+    # Parse flags
+    if len(options) >= 1 and options[0] in ['-q', '--quiet']:
+        is_quiet = True
+        options = options[1:]
+    
     # Parse arguments
-    (origin_host, port, cache_dirpath,) = args
+    (default_origin_domain, port, cache_dirpath,) = options
     address = ''
     port = int(port)
     
@@ -21,9 +28,13 @@ def main(args):
     atexit.register(lambda: cache.close())
     
     def create_request_handler(*args):
-        return CachingHTTPRequestHandler(*args, origin_host=origin_host, cache=cache)
+        return CachingHTTPRequestHandler(*args,
+            default_origin_domain=default_origin_domain,
+            cache=cache,
+            is_quiet=is_quiet)
     
-    print('Listening on %s:%s' % (address, port))
+    if not is_quiet:
+        print('Listening on %s:%s' % (address, port))
     httpd = ThreadedHttpServer((address, port), create_request_handler)
     try:
         httpd.serve_forever()
@@ -42,9 +53,10 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     to the cache automatically.
     """
     
-    def __init__(self, *args, origin_host, cache):
-        self._origin_host = origin_host
+    def __init__(self, *args, default_origin_domain, cache, is_quiet):
+        self._default_origin_domain = default_origin_domain
         self._cache = cache
+        self._is_quiet = is_quiet
         super().__init__(*args)
     
     def do_HEAD(self):
@@ -61,7 +73,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     def _send_head(self):
         # Recognize proxy-specific paths like "/_/http/xkcd.com/" and 
         # interpret them as absolute URLs like "http://xkcd.com/".
-        parsed_request_url = _parse_client_request_path(self.path, self._origin_host)
+        parsed_request_url = _parse_client_request_path(self.path, self._default_origin_domain)
         request_url = '%s://%s%s' % (
             parsed_request_url.protocol,
             parsed_request_url.domain,
@@ -71,7 +83,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         parsed_referer = None
         for (k, v) in self.headers.items():
             if k.lower() == 'referer':
-                parsed_referer = _try_parse_client_referer(v, self._origin_host)
+                parsed_referer = _try_parse_client_referer(v, self._default_origin_domain)
                 break
         
         # If referrer is a proxy absolute URL but the request URL is a
@@ -107,7 +119,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             
             # Filter request headers before sending to origin server
             _filter_headers(request_headers, 'request header')
-            _reformat_absolute_urls_in_headers(request_headers, self._origin_host)
+            _reformat_absolute_urls_in_headers(request_headers, self._default_origin_domain)
             
             response = requests.get(
                 request_url,
@@ -144,7 +156,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         # Filter response headers before sending to client
         _filter_headers(response_headers, 'response header')
-        _reformat_absolute_urls_in_headers(response_headers, self._origin_host)
+        _reformat_absolute_urls_in_headers(response_headers, self._default_origin_domain)
         
         # Filter response content before sending to client
         resource_content = _reformat_absolute_urls_in_content(resource_content, response_headers)
@@ -156,6 +168,12 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         
         return resource_content
+    
+    def log_message(self, *args):
+        if self._is_quiet:
+            pass  # operate silently
+        else:
+            super().log_message(*args)
 
 
 # ------------------------------------------------------------------------------

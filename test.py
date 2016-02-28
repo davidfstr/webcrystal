@@ -1,7 +1,11 @@
+import caching_proxy
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
+from multiprocessing import Process
+import os.path
 import requests
 import shutil
+import tempfile
 from threading import Thread
 import unittest
 from unittest import skip, TestCase
@@ -35,16 +39,26 @@ _OTHER_DOMAIN_RESPONSES = {  # like a social network
 class CachingProxyTests(TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._default_domain = start_test_server(9000, _DEFAULT_DOMAIN_RESPONSES)
-        cls._default_domain_url = 'http://127.0.0.1:9000'
+        proxy_port = 9000
+        default_domain_port = 9001
+        other_domain_port = 9002
         
-        cls._other_domain = start_test_server(9001, _OTHER_DOMAIN_RESPONSES)
-        cls._other_domain_url = 'http://127.0.0.1:9001'
+        default_domain = '127.0.0.1:%s' % default_domain_port
+        
+        cls._proxy_server_url = 'http://127.0.0.1:%s' % proxy_port
+        cls._default_server_url = 'http://%s' % default_domain
+        cls._other_server_url = 'http://127.0.0.1:%s' % other_domain_port
+        
+        cls._proxy_server = start_proxy_server(proxy_port, default_domain)
+        cls._default_server = start_origin_server(default_domain_port, _DEFAULT_DOMAIN_RESPONSES)
+        cls._other_server = start_origin_server(other_domain_port, _OTHER_DOMAIN_RESPONSES)
+        
     
     @classmethod
     def tearDownClass(cls):
-        stop_test_server(cls._default_domain)
-        stop_test_server(cls._other_domain)
+        stop_proxy_server(cls._proxy_server)
+        stop_origin_server(cls._default_server)
+        stop_origin_server(cls._other_server)
     
     # === Request Formats ===
     
@@ -81,7 +95,7 @@ class CachingProxyTests(TestCase):
     
     def _get(self, path, headers):
         response = requests.get(
-            self._default_domain_url + path,
+            self._proxy_server_url + path,
             headers=headers,
             allow_redirects=False
         )
@@ -89,10 +103,33 @@ class CachingProxyTests(TestCase):
 
 
 # ------------------------------------------------------------------------------
-# Test Server
+# Real Proxy Server
+
+def start_proxy_server(port, default_origin_domain):
+    cache_dirpath = os.path.join(
+        tempfile.mkdtemp(prefix='caching_proxy_test_cache'),
+        'default_origin.cache')
+    
+    process = Process(
+        target=caching_proxy.main,
+        args=(['--quiet', default_origin_domain, str(port), cache_dirpath],))
+    process.start()
+    
+    return process
 
 
-def start_test_server(port, responses):
+def stop_proxy_server(proxy_server):
+    process = proxy_server
+    
+    # TODO: Better to send SIGINT (Control-C), but there is no easy API for this.
+    process.terminate()
+
+
+# ------------------------------------------------------------------------------
+# Mock Origin Server
+
+
+def start_origin_server(port, responses):
     def create_request_handler(*args):
         nonlocal responses
         return TestServerHttpRequestHandler(*args, responses=responses)
@@ -105,8 +142,9 @@ def start_test_server(port, responses):
     return httpd
 
 
-def stop_test_server(test_server):
-    httpd = test_server
+def stop_origin_server(origin_server):
+    httpd = origin_server
+    
     httpd.shutdown()
 
 
@@ -149,7 +187,7 @@ class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
             response_body = response_body.encode('utf8')
         return BytesIO(response_body)
     
-    def log_message(*args):
+    def log_message(self, *args):
         pass  # operate silently
 
 
