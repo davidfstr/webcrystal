@@ -10,15 +10,41 @@ from unittest import skip, TestCase
 # ------------------------------------------------------------------------------
 # Tests
 
+_DEFAULT_DOMAIN_RESPONSES = {  # like a blog
+    '/': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html>Default domain</html>'
+    ),
+    '/posts/': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html>Posts</html>'
+    )
+}
+
+_OTHER_DOMAIN_RESPONSES = {  # like a social network
+    '/': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html>Other domain</html>'
+    ),
+    '/feed/': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html>Feed</html>'
+    )
+}
+
 class CachingProxyTests(TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._test_server = start_test_server(9000)
-        cls._test_server_url = 'http://127.0.0.1:9000'
+        cls._default_domain = start_test_server(9000, _DEFAULT_DOMAIN_RESPONSES)
+        cls._default_domain_url = 'http://127.0.0.1:9000'
+        
+        cls._other_domain = start_test_server(9001, _OTHER_DOMAIN_RESPONSES)
+        cls._other_domain_url = 'http://127.0.0.1:9001'
     
     @classmethod
     def tearDownClass(cls):
-        stop_test_server(cls._test_server)
+        stop_test_server(cls._default_domain)
+        stop_test_server(cls._other_domain)
     
     # === Request Formats ===
     
@@ -39,12 +65,14 @@ class CachingProxyTests(TestCase):
     
     # GET/HEAD of /_/http/__DOMAIN__/__PATH__
     #   -> http://__DOMAIN__/__PATH__
+    @skip('not yet automated')
     def test_request_of_qualified_http_path_works(self):
         # TODO: Extract test server logic to enable simulation of other domains.
         pass
     
     # GET/HEAD of /_/https/__DOMAIN__/__PATH__
     #   -> https://__DOMAIN__/__PATH__
+    @skip('not yet automated')
     def test_request_of_qualified_https_path_works(self):
         # TODO: Extract test server logic to enable simulation of other domains.
         pass
@@ -53,7 +81,7 @@ class CachingProxyTests(TestCase):
     
     def _get(self, path, headers):
         response = requests.get(
-            self._test_server_url + path,
+            self._default_domain_url + path,
             headers=headers,
             allow_redirects=False
         )
@@ -64,8 +92,12 @@ class CachingProxyTests(TestCase):
 # Test Server
 
 
-def start_test_server(port):
-    httpd = HTTPServer(('', port), TestServerHttpRequestHandler)
+def start_test_server(port, responses):
+    def create_request_handler(*args):
+        nonlocal responses
+        return TestServerHttpRequestHandler(*args, responses=responses)
+    
+    httpd = HTTPServer(('', port), create_request_handler)
     
     thread = Thread(target=httpd.serve_forever)
     thread.start()
@@ -78,18 +110,11 @@ def stop_test_server(test_server):
     httpd.shutdown()
 
 
-_RESPONSE_FOR_REQUEST = {
-    '/': dict(
-        headers=[('Content-Type', 'text/html')],
-        body='<html>Home page</html>'
-    ),
-    '/posts/': dict(
-        headers=[('Content-Type', 'text/html')],
-        body='<html>Posts</html>'
-    )
-}
-
 class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
+    def __init__(self, *args, responses):
+        self._responses = responses
+        super().__init__(*args)
+    
     def do_HEAD(self):
         f = self._send_head()
         f.close()
@@ -102,7 +127,7 @@ class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
             f.close()
     
     def _send_head(self):
-        response = _RESPONSE_FOR_REQUEST.get(self.path)
+        response = self._responses.get(self.path)
         if response is None:
             self.send_response(404)  # Not Found
             self.end_headers()
