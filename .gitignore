@@ -10,3 +10,7 @@
 
 # PyCharm
 .idea
+
+# coverage
+.coverage
+htmlcov
