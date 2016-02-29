@@ -1,0 +1,18 @@
+[run]
+
+# Source files to ignore
+omit =
+    # Ignore 3rd party modules like: django, selenium, markdown, yaml, etc
+    /usr/local/lib/*
+
+# Track coverage when running the caching_proxy as a separate Process
+concurrency = multiprocessing
+
+
+[report]
+
+# Ignore files that are 100% covered, like __init__.py
+# 
+# NOTE: This option seems to be ignored by the HTML report generator,
+#       although it IS respected by the CLI report generator.
+skip_covered = True

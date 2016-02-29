@@ -4,9 +4,11 @@ from caching_proxy import _format_proxy_url as format_proxy_url
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 from multiprocessing import Process
+import os
 import os.path
 import requests
 import shutil
+import signal
 import tempfile
 from threading import Thread
 import unittest
@@ -325,8 +327,10 @@ def start_proxy_server(port, default_origin_domain):
 def stop_proxy_server(proxy_server):
     process = proxy_server
     
-    # TODO: Better to send SIGINT (Control-C), but there is no easy API for this.
-    process.terminate()
+    # Send Control-C to the process to bring it down gracefully
+    # NOTE: Graceful shutdown is required in order to collect
+    #       code coverage metrics properly.
+    os.kill(process.pid, signal.SIGINT)
 
 
 # ------------------------------------------------------------------------------

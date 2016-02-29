@@ -45,6 +45,8 @@ def main(options):
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        httpd.server_close()
 
 
 ProxyInfo = namedtuple('ProxyInfo', ['host', 'port'])
