@@ -1,6 +1,7 @@
 import caching_proxy
 from caching_proxy import _format_proxy_path as format_proxy_path
 from caching_proxy import _format_proxy_url as format_proxy_url
+import gzip
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 from multiprocessing import Process
@@ -101,6 +102,36 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
         headers=[('Content-Type', 'text/html')],
         body='<html>Most pages will not load if the Host header is wrong.</html>'
     )),
+    '/posts/image_no_extension': dict(
+        headers=[('Content-Type', 'image/png')],
+        body=b''
+    ),
+    '/posts/super_secret.html': dict(
+        headers=[
+            ('Content-Type', 'text/html'),
+            # NOTE: Normally this header would only be sent over an HTTPS connection.
+            ('Strict-Transport-Security', 'max-age=31536000')
+        ],
+        body='<html>Secret!</html>'
+    ),
+    '/api/generate_weird_headers': dict(
+        headers=[
+            ('Content-Type', 'application/json'),
+            ('X-Weird-Response-Header', 'boom')
+        ],
+        body='{}'
+    ),
+    '/posts/redirect_to_social_network.html': dict(
+        status_code=302,  # Found
+        headers=[('Location', _OTHER_SERVER_URL + '/feed/landing_page_from_blog.html')]
+    ),
+    '/posts/digits.txt': dict(
+        headers=[
+            ('Content-Type', 'text/plain'),
+            ('Content-Encoding', 'gzip')
+        ],
+        body=gzip.compress(b'0123456789')
+    )
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -218,46 +249,65 @@ class CachingProxyTests(TestCase):
         # ...when coming from http://__PROXY_DOMAIN__/__PATH__
         response = self._get(
             format_proxy_path('http', _OTHER_DOMAIN, '/feed/landing_page_from_blog.html'),
-            {'Referer': _PROXY_SERVER_URL + '/redirect_to_social_network.html'})
+            {'Referer': _PROXY_SERVER_URL + '/posts/redirect_to_social_network.html'})
         self.assertEqual(200, response.status_code)
         
         # ...when coming from http://__PROXY_DOMAIN__/_/http/__DEFAULT_DOMAIN__/__PATH__
         response = self._get(
             format_proxy_path('http', _OTHER_DOMAIN, '/feed/landing_page_from_blog.html'),
-            {'Referer': format_proxy_url('http', _DEFAULT_DOMAIN, '/redirect_to_social_network.html', proxy_info=_PROXY_INFO)})
+            {'Referer': format_proxy_url('http', _DEFAULT_DOMAIN, '/posts/redirect_to_social_network.html', proxy_info=_PROXY_INFO)})
         self.assertEqual(200, response.status_code)
     
     # === Response Header Processing: Client <- Proxy <- Server ===
     
     # Allows Response Header: Content-Type
-    @skip('not yet automated')
     def test_allows_certain_headers_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/image_no_extension'))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('image/png', response.headers['Content-Type'])
     
     # Blocks Response Header: Strict-Transport-Security
-    @skip('not yet automated')
     def test_blocks_certain_headers_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/super_secret.html'))
+        self.assertEqual(200, response.status_code)
+        self.assertNotIn('Strict-Transport-Security', response.headers)
     
     # Blocks Response Header: X-Weird-Response-Header
-    @skip('not yet automated')
     def test_blocks_unknown_headers_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/generate_weird_headers'))
+        self.assertEqual(200, response.status_code)
+        self.assertNotIn('X-Weird-Response-Header', response.headers)
     
     # Blocks Response Header: X-Status-Code
-    @skip('not yet automated')
     def test_blocks_internal_headers_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/'))
+        self.assertEqual(200, response.status_code)
+        self.assertNotIn('X-Status-Code', response.headers)
     
     # Rewrites Response Header: Location
-    @skip('not yet automated')
     def test_rewrites_location_header_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/redirect_to_social_network.html'))
+        self.assertEqual(302, response.status_code)  # Found
+        self.assertEqual(
+            format_proxy_url('http', _OTHER_DOMAIN, '/feed/landing_page_from_blog.html', proxy_info=_PROXY_INFO),
+            response.headers['Location'])
     
     # Rewrites Response Header: Content-Length (if Content-Encoding is gzip or similar)
-    @skip('not yet automated')
     def test_rewrites_content_length_header_when_returning_compressed_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/digits.txt'))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(b'0123456789', response.content)
+        
+        # NOTE: Presently the proxy never serves compressed responses to the client.
+        #       This may change in the future.
+        self.assertNotIn('Content-Encoding', response.headers)
+        self.assertEqual('10', response.headers['Content-Length'])
     
     # === Response Content Processing: Client <- Proxy <- Server ===
     

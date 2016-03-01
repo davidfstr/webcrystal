@@ -295,7 +295,7 @@ def _reformat_absolute_urls_in_headers(headers, *, proxy_info, default_origin_do
             parsed_url = _try_parse_absolute_url(headers[k])
             if parsed_url is not None:
                 headers[k] = _format_proxy_url(
-                    protocol=parsed_url.parsed_url,
+                    protocol=parsed_url.protocol,
                     domain=parsed_url.domain,
                     path=parsed_url.path,
                     proxy_info=proxy_info,
@@ -436,7 +436,7 @@ _Url = namedtuple('_Url', ['protocol', 'domain', 'path'])
 _ABSOLUTE_URL_RE = re.compile(r'^(https?)://([^/]*)(/.*)?$')
 
 def _try_parse_absolute_url(url):
-    url_match = _ABSOLUTE_URL_RE.match(headers[k])
+    url_match = _ABSOLUTE_URL_RE.match(url)
     if url_match is None:
         return None
     
