@@ -142,6 +142,16 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
         body='<html><a href="%s">Link</a></html>' % 
             ('//' + _OTHER_DOMAIN + '/feed/landing_page_from_blog.html')
     ),
+    '/posts/link_to_homepage_with_site_relative_url.html': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html><a href="%s">Link</a></html>' % 
+            ('/')
+    ),
+    '/posts/link_to_neighboring_post_with_relative_url.html': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html><a href="%s">Link</a></html>' % 
+            ('neighboring_post.html')
+    ),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -340,14 +350,20 @@ class CachingProxyTests(TestCase):
             response.text)
     
     # Retains Response Content: site-relative URLs
-    @skip('not yet automated')
+    # NOTE: Might rewrite these URLs in the future.
     def test_retains_site_relative_urls_in_content_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/link_to_homepage_with_site_relative_url.html'))
+        self.assertEqual(200, response.status_code)
+        self.assertIn('"/"', response.text)
     
     # Retains Response Content: relative URLs
-    @skip('not yet automated')
+    # NOTE: Might rewrite these URLs in the future.
     def test_retains_relative_urls_in_content_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/link_to_neighboring_post_with_relative_url.html'))
+        self.assertEqual(200, response.status_code)
+        self.assertIn('"neighboring_post.html"', response.text)
     
     # === Cache Behavior ===
     
