@@ -86,7 +86,11 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         # Recognize proxy-specific paths like "/_/http/xkcd.com/" and 
         # interpret them as absolute URLs like "http://xkcd.com/".
-        parsed_request_url = _parse_client_request_path(self.path, self._default_origin_domain)
+        parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
+        if parsed_request_url is None:
+            self.send_response(400)  # Bad Request
+            self.end_headers()
+            return BytesIO(b'')
         request_url = '%s://%s%s' % (
             parsed_request_url.protocol,
             parsed_request_url.domain,
@@ -401,13 +405,11 @@ _ABSOLUTE_REQUEST_URL_RE = re.compile(r'^/_/(https?)/([^/]+)(/.*)$')
 _ClientRequestUrl = namedtuple('_ClientRequestUrl',
     ['protocol', 'domain', 'path', 'is_proxy'])
 
-def _parse_client_request_path(path, default_origin_domain):
+def _try_parse_client_request_path(path, default_origin_domain):
     if path.startswith('/_/'):
         m = _ABSOLUTE_REQUEST_URL_RE.match(path)
         if m is None:
-            self.send_response(400)  # Bad Request
-            self.end_headers()
-            return BytesIO(b'')
+            return None
         (protocol, domain, path) = m.groups()
         
         return _ClientRequestUrl(

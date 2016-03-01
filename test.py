@@ -409,6 +409,12 @@ class CachingProxyTests(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual('3', response.text)  # should be fresh
     
+    # === Misc ===
+    
+    def test_fetch_of_invalid_proxy_url_returns_bad_request(self):
+        response = self._get('/_/bogus_url')
+        self.assertEqual(400, response.status_code)  # Bad Request
+    
     # === Utility ===
     
     def _get(self, path, headers={}, *, allow_redirects=False, cache=False):
