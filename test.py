@@ -415,15 +415,25 @@ class CachingProxyTests(TestCase):
         response = self._get('/_/bogus_url')
         self.assertEqual(400, response.status_code)  # Bad Request
     
+    def test_head_works(self):
+        response = self._head(format_proxy_path('http', _DEFAULT_DOMAIN, '/'))
+        self.assertEqual('text/html', response.headers['Content-Type'])
+    
     # === Utility ===
     
-    def _get(self, path, headers={}, *, allow_redirects=False, cache=False):
+    def _get(self, *args, **kwargs):
+        return self._request('get', *args, **kwargs)
+    
+    def _head(self, *args, **kwargs):
+        return self._request('head', *args, **kwargs)
+    
+    def _request(self, method, path, headers={}, *, allow_redirects=False, cache=False):
         final_headers = dict(headers)  # clone
         if not cache:
             final_headers['Cache-Control'] = 'no-cache'
             final_headers['X-Pragma'] = 'no-cache'
         
-        response = requests.get(
+        response = getattr(requests, method)(
             _PROXY_SERVER_URL + path,
             headers=final_headers,
             allow_redirects=allow_redirects
