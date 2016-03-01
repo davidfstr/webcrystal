@@ -241,6 +241,7 @@ _HEADER_WHITELIST = [
 
     # Response
     'access-control-allow-origin',
+    'access-control-allow-credentials',
     'age',
     'content-length',
     'content-type',
