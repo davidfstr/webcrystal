@@ -137,9 +137,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             request_headers = dict(self.headers)  # clone
             
             # Set Host request header appropriately
-            for key in list(request_headers.keys()):
-                if key.lower() == 'host':
-                    del request_headers[key]
+            _del_headers(request_headers, ['Host'])
             request_headers['Host'] = parsed_request_url.domain
             
             # Filter request headers before sending to origin server
@@ -160,9 +158,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             response_content_bytes = response.content
             
             response_headers = dict(response.headers)
-            for key in list(response_headers.keys()):
-                if key.lower() in ['content-encoding', 'content-length']:
-                    del response_headers[key]
+            _del_headers(response_headers, ['Content-Length', 'Content-Encoding'])
             response_headers['Content-Length'] = str(len(response_content_bytes))
             response_headers['X-Status-Code'] = str(response.status_code)
             
@@ -179,25 +175,24 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             assert resource is not None
         
         status_code = int(resource.headers['X-Status-Code'])
-        response_headers = dict(resource.headers)
+        resource_headers = dict(resource.headers)
         resource_content = resource.content
         
         # Filter response headers before sending to client
-        _filter_headers(response_headers, 'response header', is_quiet=self._is_quiet)
+        _filter_headers(resource_headers, 'response header', is_quiet=self._is_quiet)
         _reformat_absolute_urls_in_headers(
-            response_headers,
+            resource_headers,
             proxy_info=self._proxy_info,
             default_origin_domain=self._default_origin_domain)
         
         # Filter response content before sending to client
-        resource_content = _reformat_absolute_urls_in_content(
-            resource_content,
-            resource_headers=response_headers,
+        (resource_headers, resource_content) = _reformat_absolute_urls_in_content(
+            resource_headers, resource_content,
             proxy_info=self._proxy_info)
         
         # Send headers
         self.send_response(status_code)
-        for (key, value) in response_headers.items():
+        for (key, value) in resource_headers.items():
             self.send_header(key, value)
         self.end_headers()
         
@@ -208,6 +203,13 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             pass  # operate silently
         else:
             super().log_message(*args)
+
+
+def _del_headers(headers, header_names_to_delete):
+    header_names_to_delete = [hn.lower() for hn in header_names_to_delete]
+    for key in list(headers.keys()):
+        if key.lower() in header_names_to_delete:
+            del headers[key]
 
 
 # ------------------------------------------------------------------------------
@@ -318,7 +320,7 @@ def _reformat_absolute_urls_in_headers(headers, *, proxy_info, default_origin_do
 
 _ABSOLUTE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(https?://.*?)\1')
 
-def _reformat_absolute_urls_in_content(resource_content, *, resource_headers, proxy_info):
+def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, proxy_info):
     """
     If specified resource is an HTML document, replaces any obvious absolute
     URL references with references of the format "/_/http/..." that will be
@@ -333,7 +335,7 @@ def _reformat_absolute_urls_in_content(resource_content, *, resource_headers, pr
             break
 
     if not is_html:
-        return resource_content
+        return (resource_headers, resource_content)
 
     try:
         content_bytes = resource_content.read()
@@ -358,8 +360,13 @@ def _reformat_absolute_urls_in_content(resource_content, *, resource_headers, pr
         ) + quote
 
     content_bytes = _ABSOLUTE_URL_BYTES_IN_HTML_RE.sub(urlrepl, content_bytes)
+    
+    # Update Content-Length in the headers
+    assert 'Content-Encoding' not in resource_headers
+    _del_headers(resource_headers, ['Content-Length'])
+    resource_headers['Content-Length'] = str(len(content_bytes))
 
-    return BytesIO(content_bytes)
+    return (resource_headers, BytesIO(content_bytes))
 
 
 # ------------------------------------------------------------------------------

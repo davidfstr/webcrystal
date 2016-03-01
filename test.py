@@ -131,7 +131,12 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
             ('Content-Encoding', 'gzip')
         ],
         body=gzip.compress(b'0123456789')
-    )
+    ),
+    '/posts/link_to_social_network.html': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html><a href="%s">Link</a></html>' % 
+            (_OTHER_SERVER_URL + '/feed/landing_page_from_blog.html')
+    ),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -312,9 +317,13 @@ class CachingProxyTests(TestCase):
     # === Response Content Processing: Client <- Proxy <- Server ===
     
     # Rewrites Response Content: absolute URLs
-    @skip('not yet automated')
     def test_rewrites_absolute_urls_in_content_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/link_to_social_network.html'))
+        self.assertEqual(200, response.status_code)
+        self.assertIn(
+            format_proxy_url('http', _OTHER_DOMAIN, '/feed/landing_page_from_blog.html', proxy_info=_PROXY_INFO),
+            response.text)
     
     # Rewrites Response Content: protocol-relative URLs
     @skip('not yet automated')
