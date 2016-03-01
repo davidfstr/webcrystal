@@ -137,6 +137,11 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
         body='<html><a href="%s">Link</a></html>' % 
             (_OTHER_SERVER_URL + '/feed/landing_page_from_blog.html')
     ),
+    '/posts/link_to_social_network_with_same_protocol.html': dict(
+        headers=[('Content-Type', 'text/html')],
+        body='<html><a href="%s">Link</a></html>' % 
+            ('//' + _OTHER_DOMAIN + '/feed/landing_page_from_blog.html')
+    ),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -326,9 +331,13 @@ class CachingProxyTests(TestCase):
             response.text)
     
     # Rewrites Response Content: protocol-relative URLs
-    @skip('not yet automated')
     def test_rewrites_protocol_relative_urls_in_content_when_returning_response_from_server(self):
-        pass
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/link_to_social_network_with_same_protocol.html'))
+        self.assertEqual(200, response.status_code)
+        self.assertIn(
+            format_proxy_url('http', _OTHER_DOMAIN, '/feed/landing_page_from_blog.html', proxy_info=_PROXY_INFO),
+            response.text)
     
     # Retains Response Content: site-relative URLs
     @skip('not yet automated')

@@ -319,6 +319,7 @@ def _reformat_absolute_urls_in_headers(headers, *, proxy_info, default_origin_do
 # Filter Content
 
 _ABSOLUTE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(https?://.*?)\1')
+_PROTOCOL_RELATIVE_URL_BYTES_IN_HTML_RE = re.compile(rb'([\'"])(//.*?)\1')
 
 def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, proxy_info):
     """
@@ -342,7 +343,7 @@ def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, pr
     finally:
         resource_content.close()
 
-    def urlrepl(match_in_html):
+    def reformat_absolute_url_match(match_in_html):
         nonlocal proxy_info
         
         (quote, url) = match_in_html.groups()
@@ -359,7 +360,26 @@ def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, pr
             proxy_info=proxy_info
         ) + quote
 
-    content_bytes = _ABSOLUTE_URL_BYTES_IN_HTML_RE.sub(urlrepl, content_bytes)
+    content_bytes = _ABSOLUTE_URL_BYTES_IN_HTML_RE.sub(reformat_absolute_url_match, content_bytes)
+    
+    def reformat_protocol_relative_url_match(match_in_html):
+        nonlocal proxy_info
+        
+        (quote, url) = match_in_html.groups()
+        
+        parsed_url = _try_parse_protocol_relative_url_in_bytes(url, protocol=b'http')
+        # TODO: Handle this case
+        if parsed_url is None:
+            raise NotImplementedError()
+
+        return quote + _format_proxy_url_in_bytes(
+            protocol=parsed_url.protocol,
+            domain=parsed_url.domain,
+            path=parsed_url.path,
+            proxy_info=proxy_info
+        ) + quote
+    
+    content_bytes = _PROTOCOL_RELATIVE_URL_BYTES_IN_HTML_RE.sub(reformat_protocol_relative_url_match, content_bytes)
     
     # Update Content-Length in the headers
     assert 'Content-Encoding' not in resource_headers
@@ -466,6 +486,24 @@ def _try_parse_absolute_url_in_bytes(url):
         return None
     
     (protocol, domain, path) = url_match.groups()
+    if path is None:
+        path = b''
+    
+    return _Url(
+        protocol=protocol,
+        domain=domain,
+        path=path
+    )
+
+
+_PROTOCOL_RELATIVE_URL_BYTES_RE = re.compile(rb'^//([^/]*)(/.*)?$')
+
+def _try_parse_protocol_relative_url_in_bytes(url, *, protocol):
+    url_match = _PROTOCOL_RELATIVE_URL_BYTES_RE.match(url)
+    if url_match is None:
+        return None
+    
+    (domain, path) = url_match.groups()
     if path is None:
         path = b''
     
