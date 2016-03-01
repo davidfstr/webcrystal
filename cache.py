@@ -21,6 +21,7 @@ class HttpResourceCache:
         Opens the existing cache at the specified directory,
         or creates a new cache if there is no such directory.
         """
+        self._closed = False
         self._lock = Lock()
         self._root_dirpath = root_dirpath
 
@@ -103,7 +104,10 @@ class HttpResourceCache:
         """
         Closes this cache.
         """
+        if self._closed:
+            return
         self.flush()
+        self._closed = True
 
     # === Utility ===
 
