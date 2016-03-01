@@ -77,6 +77,17 @@ def on_host(required_host, ok_response):
     
     return generate_response
 
+_default_server_counter = -1
+
+def get_counter():
+    def generate_response(path, headers):
+        global _default_server_counter
+        return dict(
+            body=str(_default_server_counter)
+        )
+    
+    return generate_response
+
 _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -152,6 +163,7 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
         body='<html><a href="%s">Link</a></html>' % 
             ('neighboring_post.html')
     ),
+    '/api/get_counter': get_counter(),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -367,14 +379,35 @@ class CachingProxyTests(TestCase):
     
     # === Cache Behavior ===
     
-    @skip('not yet automated')
     def test_returns_cached_response_by_default_if_available(self):
-        pass
+        global _default_server_counter
+        
+        _default_server_counter = 1
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter'),
+            cache=False)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('1', response.text)
+        
+        _default_server_counter = 2
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter'),
+            cache=True)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('1', response.text)  # should be stale
     
     # [Cache-Control: no-cache] should disable cache on a per-request basis
-    @skip('not yet automated')
     def test_always_returns_fresh_response_if_cache_disabled(self):
-        pass
+        global _default_server_counter
+        
+        self.test_returns_cached_response_by_default_if_available()
+        
+        _default_server_counter = 3
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter'),
+            cache=False)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('3', response.text)  # should be fresh
     
     # === Utility ===
     

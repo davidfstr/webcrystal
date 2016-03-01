@@ -123,8 +123,12 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         request_cache_control = canonical_request_headers.get('cache-control')
         request_pragma = canonical_request_headers.get('pragma')
         should_disable_cache = (
-            'no-cache' in request_cache_control or  # HACK: fuzzy match
-            'no-cache' in request_pragma            # HACK: fuzzy match
+            (request_cache_control is not None and 
+                # HACK: fuzzy match
+                'no-cache' in request_cache_control) or
+            (request_pragma is not None and 
+                # HACK: fuzzy match
+                'no-cache' in request_pragma)
         )
         
         # Try fetch requested resource from cache.
