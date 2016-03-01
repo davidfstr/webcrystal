@@ -12,11 +12,38 @@ python3 caching_proxy.py xkcd.com 6969 xkcd.cache
 
 Then you could visit <http://localhost:6969/> to have the same effect as visiting <http://xkcd.com/> directly, except that repeated requests will be cached.
 
+### Features
+
+* Cached resources are persisted in a simple on-disk format, suitable for archival.
+    * Indeed the original purpose of writing this proxy was as a first step
+      for implementing a website archiver tool.
+
 ### Requirements
 
 * Python 3.4+
+* Make
+* `pip3 install -r requirements.txt`
+
+### Running the Tests
+
+```
+make test
+```
+
+### Gathering Code Coverage Metrics
+
+```
+make coverage
+open htmlcov/index.html
+```
 
 ### Known Limitations
 
-* Only requests from the origin domain will be cached. No other domains will be cached.
-* Absolute URLs to the origin domain will not be cached. Only resource-relative and site-relative URLs will be cached appropriately.
+* This tool needs a catchy name.
+
+### License
+
+Copyright (c) 2016 by David Foster
+
+You must ask me for permission before incorporating this software into your own
+software projects.
