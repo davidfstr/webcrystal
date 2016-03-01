@@ -27,26 +27,29 @@ def main(options):
     
     # Open cache
     cache = HttpResourceCache(cache_dirpath)
-    atexit.register(lambda: cache.close())
-    
-    def create_request_handler(*args):
-        return CachingHTTPRequestHandler(*args,
-            cache=cache,
-            proxy_info=proxy_info,
-            default_origin_domain=default_origin_domain,
-            is_quiet=is_quiet)
-    
-    if not is_quiet:
-        print('Listening on %s:%s' % (proxy_info.host, proxy_info.port))
-    httpd = ThreadedHttpServer(
-        (proxy_info.host, proxy_info.port),
-        create_request_handler)
     try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        pass
+        atexit.register(lambda: cache.close())  # last resort
+        
+        def create_request_handler(*args):
+            return CachingHTTPRequestHandler(*args,
+                cache=cache,
+                proxy_info=proxy_info,
+                default_origin_domain=default_origin_domain,
+                is_quiet=is_quiet)
+        
+        if not is_quiet:
+            print('Listening on %s:%s' % (proxy_info.host, proxy_info.port))
+        httpd = ThreadedHttpServer(
+            (proxy_info.host, proxy_info.port),
+            create_request_handler)
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            httpd.server_close()
     finally:
-        httpd.server_close()
+        cache.close()
 
 
 ProxyInfo = namedtuple('ProxyInfo', ['host', 'port'])
@@ -357,9 +360,7 @@ def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, pr
         (quote, url) = match_in_html.groups()
         
         parsed_url = _try_parse_absolute_url_in_bytes(url)
-        # TODO: Handle this case
-        if parsed_url is None:
-            raise NotImplementedError()
+        assert parsed_url is not None  # inner regex should be subset of outer
 
         return quote + _format_proxy_url_in_bytes(
             protocol=parsed_url.protocol,
@@ -376,9 +377,7 @@ def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, pr
         (quote, url) = match_in_html.groups()
         
         parsed_url = _try_parse_protocol_relative_url_in_bytes(url, protocol=b'http')
-        # TODO: Handle this case
-        if parsed_url is None:
-            raise NotImplementedError()
+        assert parsed_url is not None  # inner regex should be subset of outer
 
         return quote + _format_proxy_url_in_bytes(
             protocol=parsed_url.protocol,
