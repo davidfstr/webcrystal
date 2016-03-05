@@ -42,6 +42,38 @@ make coverage
 open htmlcov/index.html
 ```
 
+## API
+
+While the proxy is running, it responds to the following API endpoints:
+
+### `GET,HEAD /`
+
+Undefined behavior.
+
+### `GET,HEAD /_/http[s]/__PATH__`
+
+If in online mode (the default):
+
+* The requested resource will be fetched from the origin server and added to the cache if:
+    * (1) it is not already cached,
+    * (2) a `Cache-Control=no-cache` header is specified, or
+    * (3) a `Pragma=no-cache` header is specified.
+* The newly cached resource will be returned to the client, with all URLs in HTTP headers and content rewritten to point to the proxy.
+
+If in offline mode:
+
+* If the resource is in the cache, it will be returned to the client, with all URLs in HTTP headers and content rewritten to point to the proxy.
+* If the resource is not in the cache, an HTTP 503 (Service Unavailable) response will be returned, with an HTML page that provides a link to the online version of the content.
+
+### `POST,GET /_online`
+
+Switches the proxy to online mode.
+
+### `POST,GET /_offline`
+
+Switches the proxy to offline mode.
+
+
 ## License
 
 Copyright (c) 2016 by David Foster
