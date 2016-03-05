@@ -115,8 +115,9 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             self._proxy_state['is_online'] = True
             
             self.send_response(200)  # OK
+            self.send_header('Content-Type', 'text/plain')
             self.end_headers()
-            return BytesIO(b'')
+            return BytesIO(b'OK')
         
         elif self.path == '/_offline':
             if method not in ['POST', 'GET']:
@@ -127,8 +128,9 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             self._proxy_state['is_online'] = False
             
             self.send_response(200)  # OK
+            self.send_header('Content-Type', 'text/plain')
             self.end_headers()
-            return BytesIO(b'')
+            return BytesIO(b'OK')
         
         elif self.path.startswith('/_delete/'):
             if method not in ['POST', 'GET']:
@@ -233,7 +235,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 
                 return BytesIO(
                     (('<html>Resource <a href="%s">%s</a> is not cached, ' +
-                      'and this proxy is in offline mode.</html>') %
+                      'and this proxy is in offline mode. Go <a href="/_online">online</a>?</html>') %
                       (html.escape(request_url), html.escape(request_url))
                     ).encode('utf8')
                 )
