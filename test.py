@@ -198,9 +198,8 @@ class CachingProxyTests(TestCase):
     
     # GET/HEAD of /__PATH__ when Referer is omitted
     #   -> http://__DEFAULT_DOMAIN__/__PATH__
-    # TODO: Consider instead issuing an HTTP 3xx redirect to a qualified path.
     def test_request_of_unqualified_path_without_referer_reinterprets_with_default_domain(self):
-        response = self._get('/posts/')
+        response = self._get('/posts/', allow_redirects=True)
         self.assertEqual(200, response.status_code)
         self.assertEqual('<html>Posts</html>', response.text)
     

@@ -186,18 +186,27 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             None if request_referer is None \
             else _try_parse_client_referer(request_referer, self._default_origin_domain)
         
-        # If referrer is a proxy absolute URL but the request URL is a
-        # regular absolute URL, redirect the request URL to also be a
-        # proxy absolute URL at the referrer domain.
-        if parsed_referer is not None and \
-                parsed_referer.is_proxy and \
-                not parsed_request_url.is_proxy:
-            redirect_url = _format_proxy_url(
-                protocol=parsed_request_url.protocol,
-                domain=parsed_referer.domain,
-                path=parsed_request_url.path,
-                proxy_info=self._proxy_info
-            )
+        # Received a request at a site-relative path?
+        # Redirect to a fully qualified proxy path at the appropriate domain.
+        if not parsed_request_url.is_proxy:
+            if parsed_referer is not None and parsed_referer.is_proxy:
+                # Referer exists and is from the proxy?
+                # Redirect to the referer domain.
+                redirect_url = _format_proxy_url(
+                    protocol=parsed_request_url.protocol,
+                    domain=parsed_referer.domain,
+                    path=parsed_request_url.path,
+                    proxy_info=self._proxy_info
+                )
+            else:
+                # No referer exists (or it's an unexpected external referer)?
+                # Redirect to the default origin domain.
+                redirect_url = _format_proxy_url(
+                    protocol=parsed_request_url.protocol,
+                    domain=parsed_request_url.domain,
+                    path=parsed_request_url.path,
+                    proxy_info=self._proxy_info
+                )
             
             self.send_response(301)  # Moved Permanently
             self.send_header('Location', redirect_url)
