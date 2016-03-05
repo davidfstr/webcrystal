@@ -1,16 +1,16 @@
 # caching_proxy.py
 
-A standalone caching HTTP proxy that caches all requests to a particular domain.
+An HTTP proxy that caches and persists all web pages accessed through it.
 
 When a HTTP resource is requested for the first time it will be fetched from the origin HTTP server and cached locally. All subsequent requests for the same resource will be returned from the cache.
 
-For example, to cache all requests from <http://xkcd.com>, you'd start the caching proxy with the command:
+To start the proxy run a command like:
 
 ```
-python3 caching_proxy.py xkcd.com 6969 xkcd.cache
+python3 caching_proxy.py 6969 xkcd.cache
 ```
 
-Then you could visit <http://localhost:6969/> to have the same effect as visiting <http://xkcd.com/> directly, except that repeated requests will be cached.
+Then you could visit <http://localhost:6969/_/http/xkcd.com/> to have the same effect as visiting <http://xkcd.com/> directly, except that all requests are cached and persisted in `xkcd.cache/`.
 
 
 ## Features
@@ -48,13 +48,25 @@ open htmlcov/index.html
 ```
 
 
+## CLI
+
+### Starting the Proxy
+
+```
+python3 caching_proxy.py <port> <cache_dirpath> [<default_origin_domain>]
+```
+
+
 ## API
 
 While the proxy is running, it responds to the following API endpoints:
 
 ### `GET,HEAD /`
 
-Undefined behavior.
+Redirects to the home page of the default origin domain if it is known. Returns:
+
+* HTTP 404 (Not Found) if no default origin domain is specified (the default) or
+* HTTP 307 (Temporary Redirect) to the default origin domain if it is specified.
 
 ### `GET,HEAD /_/http[s]/__PATH__`
 

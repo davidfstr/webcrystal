@@ -496,7 +496,7 @@ def start_proxy_server(port, default_origin_domain):
     
     process = Process(
         target=caching_proxy.main,
-        args=(['--quiet', default_origin_domain, str(port), cache_dirpath],))
+        args=(['--quiet', str(port), cache_dirpath, default_origin_domain],))
     process.start()
     
     return process

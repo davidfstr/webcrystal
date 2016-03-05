@@ -20,7 +20,11 @@ def main(options):
         options = options[1:]
     
     # Parse arguments
-    (default_origin_domain, port, cache_dirpath,) = options
+    if len(options) == 3:
+        (port, cache_dirpath, default_origin_domain) = options
+    else:
+        (port, cache_dirpath,) = options
+        default_origin_domain = None
     proxy_info = ProxyInfo(
         host='127.0.0.1',
         port=int(port),
@@ -175,11 +179,6 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return BytesIO(b'')
         assert parsed_request_url.command == '_'
-        request_url = '%s://%s%s' % (
-            parsed_request_url.protocol,
-            parsed_request_url.domain,
-            parsed_request_url.path
-        )
         
         request_referer = canonical_request_headers.get('referer')
         parsed_referer = \
@@ -198,7 +197,14 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                     path=parsed_request_url.path,
                     proxy_info=self._proxy_info
                 )
+                is_permanent = True
             else:
+                if parsed_request_url.domain is None:
+                    self.send_response(404)  # Not Found
+                    self.end_headers()
+                    
+                    return BytesIO(b'')
+                
                 # No referer exists (or it's an unexpected external referer)?
                 # Redirect to the default origin domain.
                 redirect_url = _format_proxy_url(
@@ -207,13 +213,21 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                     path=parsed_request_url.path,
                     proxy_info=self._proxy_info
                 )
+                is_permanent = False  # temporary because the default origin domain can change
             
-            self.send_response(301)  # Moved Permanently
+            self.send_response(308 if is_permanent else 307)  # Permanent Redirect, Temporary Redirect
             self.send_header('Location', redirect_url)
             self.send_header('Vary', 'Referer')
             self.end_headers()
             
             return BytesIO(b'')
+        
+        assert parsed_request_url.domain is not None
+        request_url = '%s://%s%s' % (
+            parsed_request_url.protocol,
+            parsed_request_url.domain,
+            parsed_request_url.path
+        )
         
         # If client performs a hard refresh (Command-Shift-R in Chrome),
         # ignore any cached response and refetch a fresh resource from the origin server.
