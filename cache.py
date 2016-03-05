@@ -91,6 +91,23 @@ class HttpResourceCache:
                 old_resource_id = self._resource_id_for_url.get(url)
                 if old_resource_id is None or old_resource_id < resource_id:
                     self._resource_id_for_url[url] = resource_id
+    
+    def delete(self, url):
+        """
+        Deletes the specified resource from this cache if it exists.
+        
+        Returns whether the specified resource was found and deleted.
+        """
+        with self._lock:
+            resource_id = self._resource_id_for_url.get(url)
+            if resource_id is None:
+                return False
+            else:
+                self._delete_resource(resource_id)
+                
+                self._urls[resource_id] = ''
+                del self._resource_id_for_url[url]
+                return True
 
     def flush(self):
         """
@@ -119,3 +136,7 @@ class HttpResourceCache:
 
     def _open_content(self, resource_id, mode='rb'):
         return open(os.path.join(self._root_dirpath, '%d.content' % resource_id), mode)
+    
+    def _delete_resource(self, resource_id):
+        os.remove(os.path.join(self._root_dirpath, '%d.headers' % resource_id))
+        os.remove(os.path.join(self._root_dirpath, '%d.content' % resource_id))

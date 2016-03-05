@@ -1,6 +1,7 @@
 import atexit
 from cache import HttpResource, HttpResourceCache
 from collections import namedtuple
+import html
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 import re
@@ -30,12 +31,18 @@ def main(options):
     try:
         atexit.register(lambda: cache.close())  # last resort
         
+        # ProxyState -- is mutable and threadsafe
+        proxy_state = {
+            'is_online': True
+        }
+        
         def create_request_handler(*args):
             return CachingHTTPRequestHandler(*args,
                 cache=cache,
                 proxy_info=proxy_info,
                 default_origin_domain=default_origin_domain,
-                is_quiet=is_quiet)
+                is_quiet=is_quiet,
+                proxy_state=proxy_state)
         
         if not is_quiet:
             print('Listening on %s:%s' % (proxy_info.host, proxy_info.port))
@@ -66,34 +73,106 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     to the cache automatically.
     """
     
-    def __init__(self, *args, cache, proxy_info, default_origin_domain, is_quiet):
+    def __init__(self, *args, cache, proxy_info, default_origin_domain, is_quiet, proxy_state):
         self._cache = cache
         self._proxy_info = proxy_info
         self._default_origin_domain = default_origin_domain
         self._is_quiet = is_quiet
+        self._proxy_state = proxy_state
         super().__init__(*args)
     
     def do_HEAD(self):
-        f = self._send_head()
+        f = self._send_head(method='HEAD')
         f.close()
     
     def do_GET(self):
-        f = self._send_head()
+        f = self._send_head(method='GET')
         try:
             shutil.copyfileobj(f, self.wfile)
         finally:
             f.close()
     
-    def _send_head(self):
+    def do_POST(self):
+        f = self._send_head(method='POST')
+        try:
+            shutil.copyfileobj(f, self.wfile)
+        finally:
+            f.close()
+    
+    def _send_head(self, *, method):
+        if self.path.startswith('/_') and not self.path.startswith('/_/'):
+            return self._send_head_for_special_request(method=method)
+        else:
+            return self._send_head_for_regular_request(method=method)
+    
+    def _send_head_for_special_request(self, *, method):
+        if self.path == '/_online':
+            if method not in ['POST', 'GET']:
+                self.send_response(405)  # Method Not Allowed
+                self.end_headers()
+                return BytesIO(b'')
+            
+            self._proxy_state['is_online'] = True
+            
+            self.send_response(200)  # OK
+            self.end_headers()
+            return BytesIO(b'')
+        
+        elif self.path == '/_offline':
+            if method not in ['POST', 'GET']:
+                self.send_response(405)  # Method Not Allowed
+                self.end_headers()
+                return BytesIO(b'')
+            
+            self._proxy_state['is_online'] = False
+            
+            self.send_response(200)  # OK
+            self.end_headers()
+            return BytesIO(b'')
+        
+        elif self.path.startswith('/_delete/'):
+            if method not in ['POST', 'GET']:
+                self.send_response(405)  # Method Not Allowed
+                self.end_headers()
+                return BytesIO(b'')
+            
+            parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
+            assert parsed_request_url is not None
+            request_url = '%s://%s%s' % (
+                parsed_request_url.protocol,
+                parsed_request_url.domain,
+                parsed_request_url.path
+            )
+            
+            did_exist = self._cache.delete(request_url)
+            if did_exist:
+                self.send_response(200)  # OK
+                self.end_headers()
+                return BytesIO(b'')
+            else:
+                self.send_response(404)  # Not Found
+                self.end_headers()
+                return BytesIO(b'')
+        
+        else:
+            self.send_response(400)  # Bad Request
+            self.end_headers()
+            return BytesIO(b'')
+    
+    def _send_head_for_regular_request(self, *, method):
+        if method not in ['GET', 'HEAD']:
+            self.send_response(405)  # Method Not Allowed
+            self.end_headers()
+            return BytesIO(b'')
+        
         canonical_request_headers = {k.lower(): v for (k, v) in self.headers.items()}  # cache
         
-        # Recognize proxy-specific paths like "/_/http/xkcd.com/" and 
-        # interpret them as absolute URLs like "http://xkcd.com/".
         parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
         if parsed_request_url is None:
             self.send_response(400)  # Bad Request
             self.end_headers()
             return BytesIO(b'')
+        assert parsed_request_url.command == '_'
         request_url = '%s://%s%s' % (
             parsed_request_url.protocol,
             parsed_request_url.domain,
@@ -139,11 +218,25 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         )
         
         # Try fetch requested resource from cache.
+        if should_disable_cache:
+            resource = None
+        else:
+            resource = self._cache.get(request_url)
+        
         # If missing fetch the resource from the origin and add it to the cache.
-        resource = self._cache.get(request_url)
-        if resource is None or should_disable_cache:
-            if should_disable_cache and resource is not None:
-                resource.content.close()  # dispose
+        if resource is None:
+            # Fail if in offline mode
+            if not self._proxy_state['is_online']:
+                self.send_response(503)  # Service Unavailable
+                self.send_header('Content-Type', 'text/html')
+                self.end_headers()
+                
+                return BytesIO(
+                    (('<html>Resource <a href="%s">%s</a> is not cached, ' +
+                      'and this proxy is in offline mode.</html>') %
+                      (html.escape(request_url), html.escape(request_url))
+                    ).encode('utf8')
+                )
             
             request_headers = dict(self.headers)  # clone
             
@@ -400,30 +493,32 @@ def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, pr
 # ------------------------------------------------------------------------------
 # Parse URLs
 
-_ABSOLUTE_REQUEST_URL_RE = re.compile(r'^/_/(https?)/([^/]+)(/.*)$')
+_ABSOLUTE_REQUEST_URL_RE = re.compile(r'^/(_[^/]*)/(https?)/([^/]+)(/.*)$')
 
 _ClientRequestUrl = namedtuple('_ClientRequestUrl',
-    ['protocol', 'domain', 'path', 'is_proxy'])
+    ['protocol', 'domain', 'path', 'is_proxy', 'command'])
 
 def _try_parse_client_request_path(path, default_origin_domain):
-    if path.startswith('/_/'):
+    if path.startswith('/_'):
         m = _ABSOLUTE_REQUEST_URL_RE.match(path)
         if m is None:
             return None
-        (protocol, domain, path) = m.groups()
+        (command, protocol, domain, path) = m.groups()
         
         return _ClientRequestUrl(
             protocol=protocol,
             domain=domain,
             path=path,
-            is_proxy=True
+            is_proxy=True,
+            command=command
         )
     else:
         return _ClientRequestUrl(
             protocol='http',
             domain=default_origin_domain,
             path=path,
-            is_proxy=False
+            is_proxy=False,
+            command='_'
         )
 
 
@@ -520,9 +615,9 @@ def _try_parse_protocol_relative_url_in_bytes(url, *, protocol):
     )
 
 
-def _format_proxy_path(protocol, domain, path):
-    return '/_/%s/%s%s' % (
-        protocol, domain, path)
+def _format_proxy_path(protocol, domain, path, *, command='_'):
+    return '/%s/%s/%s%s' % (
+        command, protocol, domain, path)
 
 
 def _format_proxy_url(protocol, domain, path, *, proxy_info):
