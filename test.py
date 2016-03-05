@@ -377,7 +377,7 @@ class CachingProxyTests(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertIn('"neighboring_post.html"', response.text)
     
-    # === Cache Behavior ===
+    # === Cache Behavior: Online ===
     
     def test_returns_cached_response_by_default_if_available(self):
         global _default_server_counter
@@ -409,6 +409,42 @@ class CachingProxyTests(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual('3', response.text)  # should be fresh
     
+    # === Cache Behavior: Offline ===
+    
+    def test_fetch_of_cached_resource_in_offline_mode_returns_the_resource(self):
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
+            cache=False)
+        self.assertEqual(200, response.status_code)
+        self.assertIn('Default server', response.text)
+        
+        self._go_offline()
+        try:
+            response = self._get(
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
+                cache=True)
+            self.assertEqual(200, response.status_code)
+            self.assertIn('Default server', response.text)
+        finally:
+            self._go_online()
+    
+    def test_fetch_of_uncached_resource_in_offline_mode_returns_http_503(self):
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/',
+                command='_delete'),
+            cache=False)
+        self.assertIn(response.status_code, [200, 404])
+        
+        self._go_offline()
+        try:
+            response = self._get(
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
+                cache=True)
+            self.assertEqual(503, response.status_code)
+            self.assertIn('"http://%s/"' % _DEFAULT_DOMAIN, response.text)
+        finally:
+            self._go_online()
+    
     # === Misc ===
     
     def test_fetch_of_invalid_proxy_url_returns_bad_request(self):
@@ -419,7 +455,17 @@ class CachingProxyTests(TestCase):
         response = self._head(format_proxy_path('http', _DEFAULT_DOMAIN, '/'))
         self.assertEqual('text/html', response.headers['Content-Type'])
     
-    # === Utility ===
+    # === Utility: Commands ===
+    
+    def _go_online(self):
+        response = self._get('/_online')
+        self.assertEqual(200, response.status_code)
+    
+    def _go_offline(self):
+        response = self._get('/_offline')
+        self.assertEqual(200, response.status_code)
+    
+    # === Utility: HTTP ===
     
     def _get(self, *args, **kwargs):
         return self._request('get', *args, **kwargs)

@@ -12,16 +12,19 @@ python3 caching_proxy.py xkcd.com 6969 xkcd.cache
 
 Then you could visit <http://localhost:6969/> to have the same effect as visiting <http://xkcd.com/> directly, except that repeated requests will be cached.
 
+
 ## Features
 
 * Cached resources are persisted in a simple on-disk format, suitable for archival.
     * Indeed the original purpose of writing this proxy was as a first step
       for implementing a website archiver tool.
 
+
 ## Known Limitations
 
 * This tool needs a catchy name.
 * Sites that vary the content served at a particular URL depending on whether you are logged in or not can only have one version of the URL cached.
+
 
 ## Requirements
 
@@ -29,11 +32,13 @@ Then you could visit <http://localhost:6969/> to have the same effect as visitin
 * Make
 * `pip3 install -r requirements.txt`
 
+
 ## Running the Tests
 
 ```
 make test
 ```
+
 
 ## Gathering Code Coverage Metrics
 
@@ -41,6 +46,7 @@ make test
 make coverage
 open htmlcov/index.html
 ```
+
 
 ## API
 
@@ -72,6 +78,13 @@ Switches the proxy to online mode.
 ### `POST,GET /_offline`
 
 Switches the proxy to offline mode.
+
+### `POST,GET /_delete/http[s]/__PATH__`
+
+Deletes the specified URL in the cache. Returns:
+
+* HTTP 200 (OK) if successful or
+* HTTP 404 (Not Found) if the specified URL was not in the cache.
 
 
 ## License
