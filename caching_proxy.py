@@ -112,9 +112,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     def _send_head_for_special_request(self, *, method):
         if self.path == '/_online':
             if method not in ['POST', 'GET']:
-                self.send_response(405)  # Method Not Allowed
-                self.end_headers()
-                return BytesIO(b'')
+                return self._send_head_for_simple_response(405)  # Method Not Allowed
             
             self._proxy_state['is_online'] = True
             
@@ -125,9 +123,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         elif self.path == '/_offline':
             if method not in ['POST', 'GET']:
-                self.send_response(405)  # Method Not Allowed
-                self.end_headers()
-                return BytesIO(b'')
+                return self._send_head_for_simple_response(405)  # Method Not Allowed
             
             self._proxy_state['is_online'] = False
             
@@ -138,9 +134,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         elif self.path.startswith('/_delete/'):
             if method not in ['POST', 'GET']:
-                self.send_response(405)  # Method Not Allowed
-                self.end_headers()
-                return BytesIO(b'')
+                return self._send_head_for_simple_response(405)  # Method Not Allowed
             
             parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
             assert parsed_request_url is not None
@@ -152,19 +146,13 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             
             did_exist = self._cache.delete(request_url)
             if did_exist:
-                self.send_response(200)  # OK
-                self.end_headers()
-                return BytesIO(b'')
+                return self._send_head_for_simple_response(200)  # OK
             else:
-                self.send_response(404)  # Not Found
-                self.end_headers()
-                return BytesIO(b'')
+                return self._send_head_for_simple_response(404)  # Not Found
         
         elif self.path.startswith('/_refresh/'):
             if method not in ['POST', 'GET']:
-                self.send_response(405)  # Method Not Allowed
-                self.end_headers()
-                return BytesIO(b'')
+                return self._send_head_for_simple_response(405)  # Method Not Allowed
             
             parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
             assert parsed_request_url is not None
@@ -176,37 +164,27 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             
             request_headers = self._cache.get_request_headers(request_url)
             if request_headers is None:
-                self.send_response(404)  # Not Found
-                self.end_headers()
-                return BytesIO(b'')
+                return self._send_head_for_simple_response(404)  # Not Found
             
             resource = self._fetch_from_origin_and_store_in_cache(
                 request_url, request_headers,
                 parsed_request_url=parsed_request_url)
             resource.content.close()
             
-            self.send_response(200)  # OK
-            self.end_headers()
-            return BytesIO(b'')
+            return self._send_head_for_simple_response(200)  # OK
             
         else:
-            self.send_response(400)  # Bad Request
-            self.end_headers()
-            return BytesIO(b'')
+            return self._send_head_for_simple_response(400)  # Bad Request
     
     def _send_head_for_regular_request(self, *, method):
         if method not in ['GET', 'HEAD']:
-            self.send_response(405)  # Method Not Allowed
-            self.end_headers()
-            return BytesIO(b'')
+            return self._send_head_for_simple_response(405)  # Method Not Allowed
         
         canonical_request_headers = {k.lower(): v for (k, v) in self.headers.items()}  # cache
         
         parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
         if parsed_request_url is None:
-            self.send_response(400)  # Bad Request
-            self.end_headers()
-            return BytesIO(b'')
+            return self._send_head_for_simple_response(400)  # Bad Request
         assert parsed_request_url.command == '_'
         
         request_referer = canonical_request_headers.get('referer')
@@ -229,10 +207,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 is_permanent = True
             else:
                 if parsed_request_url.domain is None:
-                    self.send_response(404)  # Not Found
-                    self.end_headers()
-                    
-                    return BytesIO(b'')
+                    return self._send_head_for_simple_response(404)  # Not Found
                 
                 # No referer exists (or it's an unexpected external referer)?
                 # Redirect to the default origin domain.
@@ -367,6 +342,11 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         
         return resource_content
+    
+    def _send_head_for_simple_response(self, status_code):
+        self.send_response(status_code)
+        self.end_headers()
+        return BytesIO(b'')
     
     def log_message(self, *args):
         if self._is_quiet:
