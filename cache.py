@@ -50,15 +50,28 @@ class HttpResourceCache:
             if resource_id is None:
                 return None
 
-        with self._open_header(resource_id, 'r') as f:
+        with self._open_response_headers(resource_id, 'r') as f:
             headers = json.load(f)
-        f = self._open_content(resource_id, 'rb')
+        f = self._open_response_content(resource_id, 'rb')
         return HttpResource(
             headers=headers,
             content=f,
         )
+    
+    def get_request_headers(self, url):
+        """
+        Gets the request headers for the resource at the specified url from this cache,
+        or None if the specified resource is not in the cache.
+        """
+        with self._lock:
+            resource_id = self._resource_id_for_url.get(url)
+            if resource_id is None:
+                return None
+        
+        with self._open_request_headers(resource_id, 'r') as f:
+            return json.load(f)
 
-    def put(self, url, resource):
+    def put(self, url, request_headers, resource):
         """
         Puts the specified HttpResource into this cache, replacing any previous
         resource with the same url.
@@ -77,9 +90,11 @@ class HttpResourceCache:
                 resource_id_is_new = False
 
         # Write resource content
-        with self._open_header(resource_id, 'w') as f:
+        with self._open_request_headers(resource_id, 'w') as f:
+            json.dump(request_headers, f)
+        with self._open_response_headers(resource_id, 'w') as f:
             json.dump(resource.headers, f)
-        with self._open_content(resource_id, 'wb') as f:
+        with self._open_response_content(resource_id, 'wb') as f:
             shutil.copyfileobj(resource.content, f)
 
         # Commit resource ID (if new)
@@ -130,11 +145,14 @@ class HttpResourceCache:
 
     def _open_index(self, mode='r'):
         return open(os.path.join(self._root_dirpath, '_index'), mode, encoding='utf8')
-
-    def _open_header(self, resource_id, mode='r'):
+    
+    def _open_request_headers(self, resource_id, mode='r'):
+        return open(os.path.join(self._root_dirpath, '%d.request' % resource_id), mode, encoding='utf8')
+    
+    def _open_response_headers(self, resource_id, mode='r'):
         return open(os.path.join(self._root_dirpath, '%d.headers' % resource_id), mode, encoding='utf8')
 
-    def _open_content(self, resource_id, mode='rb'):
+    def _open_response_content(self, resource_id, mode='rb'):
         return open(os.path.join(self._root_dirpath, '%d.content' % resource_id), mode)
     
     def _delete_resource(self, resource_id):

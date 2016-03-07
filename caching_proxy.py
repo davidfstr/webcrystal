@@ -160,6 +160,35 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return BytesIO(b'')
         
+        elif self.path.startswith('/_refresh/'):
+            if method not in ['POST', 'GET']:
+                self.send_response(405)  # Method Not Allowed
+                self.end_headers()
+                return BytesIO(b'')
+            
+            parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
+            assert parsed_request_url is not None
+            request_url = '%s://%s%s' % (
+                parsed_request_url.protocol,
+                parsed_request_url.domain,
+                parsed_request_url.path
+            )
+            
+            request_headers = self._cache.get_request_headers(request_url)
+            if request_headers is None:
+                self.send_response(404)  # Not Found
+                self.end_headers()
+                return BytesIO(b'')
+            
+            resource = self._fetch_from_origin_and_store_in_cache(
+                request_url, request_headers,
+                parsed_request_url=parsed_request_url)
+            resource.content.close()
+            
+            self.send_response(200)  # OK
+            self.end_headers()
+            return BytesIO(b'')
+            
         else:
             self.send_response(400)  # Bad Request
             self.end_headers()
@@ -263,46 +292,58 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                     ).encode('utf8')
                 )
             
-            request_headers = dict(self.headers)  # clone
-            
-            # Set Host request header appropriately
-            _del_headers(request_headers, ['Host'])
-            request_headers['Host'] = parsed_request_url.domain
-            
-            # Filter request headers before sending to origin server
-            _filter_headers(request_headers, 'request header', is_quiet=self._is_quiet)
-            _reformat_absolute_urls_in_headers(
-                request_headers,
-                proxy_info=self._proxy_info,
-                default_origin_domain=self._default_origin_domain)
-            
-            response = requests.get(
+            resource = self._fetch_from_origin_and_store_in_cache(
                 request_url,
-                headers=request_headers,
-                allow_redirects=False
-            )
-            
-            # NOTE: Not streaming the response at the moment for simplicity.
-            #       Probably want to use iter_content() later.
-            response_content_bytes = response.content
-            
-            response_headers = dict(response.headers)
-            _del_headers(response_headers, ['Content-Length', 'Content-Encoding'])
-            response_headers['Content-Length'] = str(len(response_content_bytes))
-            response_headers['X-Status-Code'] = str(response.status_code)
-            
-            response_content = BytesIO(response_content_bytes)
-            try:
-                self._cache.put(request_url, HttpResource(
-                    headers=response_headers,
-                    content=response_content
-                ))
-            finally:
-                response_content.close()
-            
-            resource = self._cache.get(request_url)
-            assert resource is not None
+                self.headers,
+                parsed_request_url=parsed_request_url)
         
+        return self._send_head_for_resource(resource)
+    
+    def _fetch_from_origin_and_store_in_cache(
+            self, request_url, request_headers, *, parsed_request_url):
+        request_headers = dict(request_headers)  # clone
+        
+        # Set Host request header appropriately
+        _del_headers(request_headers, ['Host'])
+        request_headers['Host'] = parsed_request_url.domain
+        
+        # Filter request headers before sending to origin server
+        _filter_headers(request_headers, 'request header', is_quiet=self._is_quiet)
+        _reformat_absolute_urls_in_headers(
+            request_headers,
+            proxy_info=self._proxy_info,
+            default_origin_domain=self._default_origin_domain)
+        
+        response = requests.get(
+            request_url,
+            headers=request_headers,
+            allow_redirects=False
+        )
+        
+        # NOTE: Not streaming the response at the moment for simplicity.
+        #       Probably want to use iter_content() later.
+        response_content_bytes = response.content
+        
+        response_headers = dict(response.headers)
+        _del_headers(response_headers, ['Content-Length', 'Content-Encoding'])
+        response_headers['Content-Length'] = str(len(response_content_bytes))
+        response_headers['X-Status-Code'] = str(response.status_code)
+        
+        response_content = BytesIO(response_content_bytes)
+        try:
+            self._cache.put(request_url, request_headers, HttpResource(
+                headers=response_headers,
+                content=response_content
+            ))
+        finally:
+            response_content.close()
+        
+        resource = self._cache.get(request_url)
+        assert resource is not None
+        
+        return resource
+    
+    def _send_head_for_resource(self, resource):
         status_code = int(resource.headers['X-Status-Code'])
         resource_headers = dict(resource.headers)
         resource_content = resource.content

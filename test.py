@@ -47,6 +47,16 @@ def forbid_unless_referer_starts_with(required_referer_prefix, ok_response):
     
     return generate_response
 
+def forbid_unless_user_agent_is(required_user_agent, ok_response_func):
+    def generate_response(path, headers):
+        user_agent = {k.lower(): v for (k, v) in headers.items()}.get('user-agent')
+        if user_agent != required_user_agent:
+            return dict(status_code=403)  # Forbidden
+        else:
+            return ok_response_func(path, headers)
+    
+    return generate_response
+
 def modified_long_ago(ok_response):
     def generate_response(path, headers):
         if_modified_since = {k.lower(): v for (k, v) in headers.items()}.get('if-modified-since')
@@ -164,6 +174,7 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
             ('neighboring_post.html')
     ),
     '/api/get_counter': get_counter(),
+    '/api/get_counter_only_chrome': forbid_unless_user_agent_is('Chrome', get_counter()),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -443,6 +454,31 @@ class CachingProxyTests(TestCase):
             self.assertIn('"http://%s/"' % _DEFAULT_DOMAIN, response.text)
         finally:
             self._go_online()
+    
+    # === Refresh ===
+    
+    def test_can_refresh_resource_without_resending_request_headers(self):
+        global _default_server_counter
+        
+        _default_server_counter = 1
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome'),
+            {'User-Agent': 'Chrome'})
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('1', response.text)
+        
+        _default_server_counter = 2
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome',
+                command='_refresh'))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('', response.text)
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome'),
+            cache=True)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('2', response.text)
     
     # === Misc ===
     

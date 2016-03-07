@@ -59,7 +59,9 @@ python3 caching_proxy.py <port> <cache_dirpath> [<default_origin_domain>]
 
 ## API
 
-While the proxy is running, it responds to the following API endpoints:
+While the proxy is running, it responds to the following API endpoints.
+
+Notice that GET is an accepted HTTP method for all endpoints, so that they can be requested using a regular web browser easily.
 
 ### `GET,HEAD /`
 
@@ -90,6 +92,13 @@ Switches the proxy to online mode.
 ### `POST,GET /_offline`
 
 Switches the proxy to offline mode.
+
+### `POST,GET /_refresh/http[s]/__PATH__`
+
+Refetches the specified URL from the origin server using the same request headers as the last time it was fetched. Returns:
+
+* HTTP 200 (OK) if successful or
+* HTTP 404 (Not Found) if the specified URL was not in the cache.
 
 ### `POST,GET /_delete/http[s]/__PATH__`
 
