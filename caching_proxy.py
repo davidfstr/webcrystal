@@ -1,14 +1,17 @@
 import atexit
 from cache import HttpResource, HttpResourceCache
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 import html
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 import re
-import requests
 import shutil
 from socketserver import ThreadingMixIn
 import sys
+import urllib3
+
+
+http = urllib3.PoolManager()
 
 
 def main(options):
@@ -276,7 +279,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     
     def _fetch_from_origin_and_store_in_cache(
             self, request_url, request_headers, *, parsed_request_url):
-        request_headers = dict(request_headers)  # clone
+        request_headers = OrderedDict(request_headers)  # clone
         
         # Set Host request header appropriately
         _del_headers(request_headers, ['Host'])
@@ -289,20 +292,21 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
             proxy_info=self._proxy_info,
             default_origin_domain=self._default_origin_domain)
         
-        response = requests.get(
-            request_url,
+        response = http.request(
+            method='GET',
+            url=request_url,
             headers=request_headers,
-            allow_redirects=False
+            redirect=False
         )
         
         # NOTE: Not streaming the response at the moment for simplicity.
         #       Probably want to use iter_content() later.
-        response_content_bytes = response.content
+        response_content_bytes = response.data
         
-        response_headers = dict(response.headers)
+        response_headers = OrderedDict(response.headers)  # clone
         _del_headers(response_headers, ['Content-Length', 'Content-Encoding'])
         response_headers['Content-Length'] = str(len(response_content_bytes))
-        response_headers['X-Status-Code'] = str(response.status_code)
+        response_headers['X-Status-Code'] = str(response.status)
         
         response_content = BytesIO(response_content_bytes)
         try:
@@ -320,7 +324,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
     
     def _send_head_for_resource(self, resource):
         status_code = int(resource.headers['X-Status-Code'])
-        resource_headers = dict(resource.headers)
+        resource_headers = OrderedDict(resource.headers)  # clone
         resource_content = resource.content
         
         # Filter response headers before sending to client
@@ -368,7 +372,7 @@ def _del_headers(headers, header_names_to_delete):
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Filter Header Keys
 
-_HEADER_WHITELIST = [
+_REQUEST_HEADER_WHITELIST = [
     # Request
     'accept',
     'accept-encoding',
@@ -377,7 +381,8 @@ _HEADER_WHITELIST = [
     'host',
     'referer',
     'user-agent',
-
+]
+_RESPONSE_HEADER_WHITELIST = [
     # Response
     'access-control-allow-origin',
     'access-control-allow-credentials',
@@ -399,7 +404,12 @@ _HEADER_WHITELIST = [
     'x-served-by',
     'x-xss-protection',
 ]
-_HEADER_BLACKLIST = [
+_HEADER_WHITELIST = (
+    _REQUEST_HEADER_WHITELIST + 
+    _RESPONSE_HEADER_WHITELIST
+)
+
+_REQUEST_HEADER_BLACKLIST = [
     # Request
     'cache-control',
     'connection',
@@ -408,7 +418,8 @@ _HEADER_BLACKLIST = [
     'pragma',
     'upgrade-insecure-requests',
     'x-pragma',
-
+]
+_RESPONSE_HEADER_BLACKLIST = [
     # Response
     'accept-ranges',
     'cache-control',
@@ -421,11 +432,18 @@ _HEADER_BLACKLIST = [
     'x-request-id',
     'x-served-time',
     'x-timer',
-
+]
+_INTERNAL_RESPONSE_HEADERS = [
     # Internal
     'x-status-code',
 ]
+_HEADER_BLACKLIST = (
+    _REQUEST_HEADER_BLACKLIST + 
+    _RESPONSE_HEADER_BLACKLIST + 
+    _INTERNAL_RESPONSE_HEADERS
+)
 
+# TODO: Should differentiate between request & response headers.
 def _filter_headers(headers, header_type_title, *, is_quiet):
     for k in list(headers.keys()):
         k_lower = k.lower()

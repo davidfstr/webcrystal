@@ -1,23 +1,28 @@
 import caching_proxy
 from caching_proxy import _format_proxy_path as format_proxy_path
 from caching_proxy import _format_proxy_url as format_proxy_url
+from collections import OrderedDict
 import gzip
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 from multiprocessing import Process
 import os
 import os.path
-import requests
+import random
 import shutil
 import signal
 import tempfile
 from threading import Thread
 import unittest
 from unittest import skip, TestCase
+import urllib3
 
 
 # ------------------------------------------------------------------------------
 # Tests
+
+http = urllib3.PoolManager()
+
 
 _HOST = '127.0.0.1'
 _PROXY_PORT = 9000
@@ -98,6 +103,26 @@ def get_counter():
     
     return generate_response
 
+_expected_request_headers = None
+
+def expects_certain_request_headers():
+    def generate_response(path, headers):
+        global _expected_request_headers
+        
+        matching_request_headers = [k for k in headers.keys() if k in _expected_request_headers]
+        if matching_request_headers != _expected_request_headers:
+            return dict(
+                status_code=400,  # Bad Request
+                body='Expected headers %s but got %s.' % (
+                    _expected_request_headers,
+                    matching_request_headers
+                )
+            )
+        else:
+            return dict(status_code=200)  # OK
+    
+    return generate_response
+
 _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -175,6 +200,7 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
     ),
     '/api/get_counter': get_counter(),
     '/api/get_counter_only_chrome': forbid_unless_user_agent_is('Chrome', get_counter()),
+    '/api/expects_certain_request_headers': expects_certain_request_headers(),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -387,6 +413,37 @@ class CachingProxyTests(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertIn('"neighboring_post.html"', response.text)
     
+    # === Header Order Preservation ===
+    
+    def test_sends_request_headers_in_same_order_as_client(self):
+        global _expected_request_headers
+        
+        SAFE_REQUEST_HEADERS = [
+            h for h in caching_proxy._REQUEST_HEADER_WHITELIST
+            if h not in ['host', 'referer']
+        ]
+        
+        for i in range(5):
+            headers = list(SAFE_REQUEST_HEADERS)  # clone
+            if i != 0:
+                random.shuffle(headers)
+            
+            _expected_request_headers = headers  # export
+            
+            response = self._get(
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/api/expects_certain_request_headers'),
+                OrderedDict([(k, 'ignoreme') for k in headers]))
+            self.assertEqual(200, response.status_code, response.text)
+    
+    @skip('not yet automated')
+    def test_sends_response_headers_in_same_order_as_origin_server(self):
+        SAFE_RESPONSE_HEADERS = [
+            h for h in caching_proxy._RESPONSE_HEADER_WHITELIST
+            if h.startswith('x-')
+        ]
+        
+        pass  # TODO: implement
+    
     # === Cache Behavior: Online ===
     
     def test_returns_cached_response_by_default_if_available(self):
@@ -503,23 +560,51 @@ class CachingProxyTests(TestCase):
     # === Utility: HTTP ===
     
     def _get(self, *args, **kwargs):
-        return self._request('get', *args, **kwargs)
+        return self._request('GET', *args, **kwargs)
     
     def _head(self, *args, **kwargs):
-        return self._request('head', *args, **kwargs)
+        return self._request('HEAD', *args, **kwargs)
     
     def _request(self, method, path, headers={}, *, allow_redirects=False, cache=False):
-        final_headers = dict(headers)  # clone
+        final_headers = OrderedDict(headers)  # clone
         if not cache:
             final_headers['Cache-Control'] = 'no-cache'
             final_headers['X-Pragma'] = 'no-cache'
         
-        response = getattr(requests, method)(
-            _PROXY_SERVER_URL + path,
+        urllib3_response = http.request(
+            method=method,
+            url=_PROXY_SERVER_URL + path,
             headers=final_headers,
-            allow_redirects=allow_redirects
+            redirect=allow_redirects
         )
-        return response
+        return _HttpResponse(urllib3_response)
+
+
+class _HttpResponse:
+    """
+    An HTTP response.
+    
+    Simulates the API of the "requests" library, since that's the library that
+    the test suite was originally written with.
+    """
+    def __init__(self, urllib3_response):
+        self._urllib3_response = urllib3_response
+    
+    @property
+    def status_code(self):
+        return self._urllib3_response.status
+    
+    @property
+    def headers(self):
+        return self._urllib3_response.headers
+    
+    @property
+    def text(self):
+        return self._urllib3_response.data.decode('utf8')
+    
+    @property
+    def content(self):
+        return self._urllib3_response.data
 
 
 # ------------------------------------------------------------------------------
