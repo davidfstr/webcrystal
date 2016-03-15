@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 import json
 import os.path
 import shutil
@@ -51,7 +51,7 @@ class HttpResourceCache:
                 return None
 
         with self._open_response_headers(resource_id, 'r') as f:
-            headers = json.load(f)
+            headers = json.load(f, object_pairs_hook=OrderedDict)
         f = self._open_response_content(resource_id, 'rb')
         return HttpResource(
             headers=headers,
@@ -69,7 +69,7 @@ class HttpResourceCache:
                 return None
         
         with self._open_request_headers(resource_id, 'r') as f:
-            return json.load(f)
+            return json.load(f, object_pairs_hook=OrderedDict)
 
     def put(self, url, request_headers, resource):
         """

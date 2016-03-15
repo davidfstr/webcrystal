@@ -123,6 +123,16 @@ def expects_certain_request_headers():
     
     return generate_response
 
+_response_headers_to_send = None
+
+def send_certain_response_headers():
+    def generate_response(path, headers):
+        global _response_headers_to_send
+        
+        return dict(status_code=200, headers=list(_response_headers_to_send.items()))
+    
+    return generate_response
+
 _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -201,6 +211,7 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/api/get_counter': get_counter(),
     '/api/get_counter_only_chrome': forbid_unless_user_agent_is('Chrome', get_counter()),
     '/api/expects_certain_request_headers': expects_certain_request_headers(),
+    '/api/send_certain_response_headers': send_certain_response_headers(),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -435,14 +446,29 @@ class CachingProxyTests(TestCase):
                 OrderedDict([(k, 'ignoreme') for k in headers]))
             self.assertEqual(200, response.status_code, response.text)
     
-    @skip('not yet automated')
     def test_sends_response_headers_in_same_order_as_origin_server(self):
+        global _response_headers_to_send
+        
         SAFE_RESPONSE_HEADERS = [
             h for h in caching_proxy._RESPONSE_HEADER_WHITELIST
             if h.startswith('x-')
         ]
         
-        pass  # TODO: implement
+        for i in range(5):
+            headers = list(SAFE_RESPONSE_HEADERS)  # clone
+            if i != 0:
+                random.shuffle(headers)
+            
+            _response_headers_to_send = \
+                OrderedDict([(k, 'ignoreme') for k in headers])  # export
+            
+            response = self._get(
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/api/send_certain_response_headers'))
+            self.assertEqual(200, response.status_code)
+            
+            matching_response_headers = \
+                [k for k in response.headers.keys() if k in _response_headers_to_send]
+            self.assertEqual(headers, matching_response_headers)
     
     # === Cache Behavior: Online ===
     
@@ -684,7 +710,7 @@ class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
         
         # Send header
         self.send_response(response.get('status_code', 200))
-        for (k, v) in response.get('headers', {}):
+        for (k, v) in response.get('headers', []):
             self.send_header(k, v)
         self.end_headers()
         
