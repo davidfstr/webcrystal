@@ -13,4 +13,5 @@
 
 # coverage
 .coverage
+.coverage.*
 htmlcov

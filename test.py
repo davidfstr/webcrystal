@@ -247,25 +247,37 @@ class ArchivingProxyTests(TestCase):
     # GET/HEAD of /__PATH__ when Referer is omitted
     #   -> http://__DEFAULT_DOMAIN__/__PATH__
     def test_request_of_unqualified_path_without_referer_reinterprets_with_default_domain(self):
-        response = self._get('/posts/', allow_redirects=True)
-        self.assertEqual(200, response.status_code)
-        self.assertEqual('<html>Posts</html>', response.text)
+        for method in ['GET', 'HEAD', 'POST']:
+            response = self._request(method, '/posts/', allow_redirects=True)
+            if method == 'POST':
+                self.assertEqual(405, response.status_code)
+            else:
+                self.assertEqual(200, response.status_code)
+                self.assertEqual('<html>Posts</html>' if method == 'GET' else '', response.text)
     
     # GET/HEAD of /__PATH__ when Referer is __OTHER_DOMAIN__
     #   -> http://__OTHER_DOMAIN__/__PATH__
     def test_request_of_unqualified_path_with_referer_uses_referer_domain(self):
-        response = self._get('/', {
-            'Referer': format_proxy_url('http', _OTHER_DOMAIN, '/feed/', proxy_info=_PROXY_INFO)
-        }, allow_redirects=True)
-        self.assertEqual(200, response.status_code)
-        self.assertEqual('<html>Other server</html>', response.text)
+        for method in ['GET', 'HEAD', 'POST']:
+            response = self._request(method, '/', {
+                'Referer': format_proxy_url('http', _OTHER_DOMAIN, '/feed/', proxy_info=_PROXY_INFO)
+            }, allow_redirects=True)
+            if method == 'POST':
+                self.assertEqual(405, response.status_code)
+            else:
+                self.assertEqual(200, response.status_code)
+                self.assertEqual('<html>Other server</html>' if method == 'GET' else '', response.text)
     
     # GET/HEAD of /_/http/__OTHER_DOMAIN__/__PATH__
     #   -> http://__OTHER_DOMAIN__/__PATH__
     def test_request_of_qualified_http_path_works(self):
-        response = self._get(format_proxy_path('http', _OTHER_DOMAIN, '/feed/'))
-        self.assertEqual(200, response.status_code)
-        self.assertEqual('<html>Feed</html>', response.text)
+        for method in ['GET', 'HEAD', 'POST']:
+            response = self._request(method, format_proxy_path('http', _OTHER_DOMAIN, '/feed/'))
+            if method == 'POST':
+                self.assertEqual(405, response.status_code)
+            else:
+                self.assertEqual(200, response.status_code)
+                self.assertEqual('<html>Feed</html>' if method == 'GET' else '', response.text)
     
     # GET/HEAD of /_/https/__DOMAIN__/__PATH__
     #   -> https://__DOMAIN__/__PATH__
@@ -470,7 +482,7 @@ class ArchivingProxyTests(TestCase):
                 [k for k in response.headers.keys() if k in _response_headers_to_send]
             self.assertEqual(headers, matching_response_headers)
     
-    # === Archiving Behavior: Online ===
+    # === Online vs. Offline ===
     
     def test_returns_archived_response_by_default_if_available(self):
         global _default_server_counter
@@ -502,66 +514,88 @@ class ArchivingProxyTests(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual('3', response.text)  # should be fresh
     
-    # === Archiving Behavior: Offline ===
-    
     def test_fetch_of_archived_resource_in_offline_mode_returns_the_resource(self):
-        response = self._get(
-            format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
-            cache=False)
-        self.assertEqual(200, response.status_code)
-        self.assertIn('Default server', response.text)
-        
-        self._go_offline()
-        try:
+        for starline_method in ['POST', 'GET']:
             response = self._get(
                 format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
-                cache=True)
+                cache=False)
             self.assertEqual(200, response.status_code)
             self.assertIn('Default server', response.text)
-        finally:
-            self._go_online()
+            
+            self._go_offline(method=starline_method)
+            try:
+                response = self._get(
+                    format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
+                    cache=True)
+                self.assertEqual(200, response.status_code)
+                self.assertIn('Default server', response.text)
+            finally:
+                self._go_online(method=starline_method)
     
     def test_fetch_of_unarchived_resource_in_offline_mode_returns_http_503(self):
-        response = self._get(
-            format_proxy_path('http', _DEFAULT_DOMAIN, '/',
-                command='_delete'),
-            cache=False)
-        self.assertIn(response.status_code, [200, 404])
-        
-        self._go_offline()
-        try:
+        for starline_method in ['POST', 'GET']:
             response = self._get(
-                format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
-                cache=True)
-            self.assertEqual(503, response.status_code)
-            self.assertIn('"http://%s/"' % _DEFAULT_DOMAIN, response.text)
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/',
+                    command='_delete'),
+                cache=False)
+            self.assertIn(response.status_code, [200, 404])
+            
+            self._go_offline(method=starline_method)
+            try:
+                response = self._get(
+                    format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
+                    cache=True)
+                self.assertEqual(503, response.status_code)
+                self.assertIn('"http://%s/"' % _DEFAULT_DOMAIN, response.text)
+            finally:
+                self._go_online(method=starline_method)
+    
+    def test_cannot_go_online_with_invalid_method(self):
+        self._go_online(method='HEAD')
+    
+    def test_cannot_go_offline_with_invalid_method(self):
+        try:
+            self._go_offline(method='HEAD')
         finally:
             self._go_online()
     
     # === Refresh ===
     
     def test_can_refresh_resource_without_resending_request_headers(self):
-        global _default_server_counter
-        
-        _default_server_counter = 1
-        response = self._get(
-            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome'),
-            {'User-Agent': 'Chrome'})
-        self.assertEqual(200, response.status_code)
-        self.assertEqual('1', response.text)
-        
-        _default_server_counter = 2
-        response = self._get(
-            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome',
+        for method in ['POST', 'GET']:
+            global _default_server_counter
+            
+            _default_server_counter = 1
+            response = self._get(
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome'),
+                {'User-Agent': 'Chrome'})
+            self.assertEqual(200, response.status_code)
+            self.assertEqual('1', response.text)
+            
+            _default_server_counter = 2
+            response = self._request(method,
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome',
+                    command='_refresh'))
+            self.assertEqual(200, response.status_code)
+            self.assertEqual('', response.text)
+            
+            response = self._get(
+                format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome'),
+                cache=True)
+            self.assertEqual(200, response.status_code)
+            self.assertEqual('2', response.text)
+    
+    def test_cannot_refresh_unarchived_resource(self):
+        response = self._post(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/never_archived',
                 command='_refresh'))
-        self.assertEqual(200, response.status_code)
-        self.assertEqual('', response.text)
-        
-        response = self._get(
-            format_proxy_path('http', _DEFAULT_DOMAIN, '/api/get_counter_only_chrome'),
-            cache=True)
-        self.assertEqual(200, response.status_code)
-        self.assertEqual('2', response.text)
+        self.assertEqual(404, response.status_code)
+    
+    def test_cannot_refresh_resource_with_invalid_method(self):
+        response = self._request('HEAD',
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/',
+                command='_refresh'))
+        self.assertEqual(405, response.status_code)
     
     # === Misc ===
     
@@ -575,13 +609,13 @@ class ArchivingProxyTests(TestCase):
     
     # === Utility: Commands ===
     
-    def _go_online(self):
-        response = self._get('/_online')
-        self.assertEqual(200, response.status_code)
+    def _go_online(self, *, method='POST'):
+        response = self._request(method, '/_online')
+        self.assertEqual(200 if method in ['POST', 'GET'] else 405, response.status_code)
     
-    def _go_offline(self):
-        response = self._get('/_offline')
-        self.assertEqual(200, response.status_code)
+    def _go_offline(self, *, method='POST'):
+        response = self._request(method, '/_offline')
+        self.assertEqual(200 if method in ['POST', 'GET'] else 405, response.status_code)
     
     # === Utility: HTTP ===
     
@@ -590,6 +624,9 @@ class ArchivingProxyTests(TestCase):
     
     def _head(self, *args, **kwargs):
         return self._request('HEAD', *args, **kwargs)
+    
+    def _post(self, *args, **kwargs):
+        return self._request('POST', *args, **kwargs)
     
     def _request(self, method, path, headers={}, *, allow_redirects=False, cache=False):
         final_headers = OrderedDict(headers)  # clone
