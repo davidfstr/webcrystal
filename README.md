@@ -2,7 +2,7 @@
 
 webcrystal is:
 
-1. An HTTP proxy and service that saves every web page accessed through it to disk.
+1. An HTTP proxy and web service that saves every web page accessed through it to disk.
 2. An on-disk archival format for storing websites.
 
 webcrystal is intended as a tool for archiving websites.
@@ -10,48 +10,20 @@ webcrystal is intended as a tool for archiving websites.
 ## Features
 
 * Compact package: One .py file. Only one dependency (`urllib3`).
-* Nearly 100% test coverage.
+* A simple documented archival format.
+* Nearly 100% code coverage.
 
 ## Usage
 
 To start the proxy run a command like:
 
 ```
-python3 webcrystal.py 9227 xkcd.wbcr
+python3 webcrystal.py 9227 xkcd.wbcr http://xkcd.com/
 ```
 
-Then you could visit <http://localhost:9227/_/http/xkcd.com/> to have the same effect as visiting <http://xkcd.com/> directly, except that all requests are archived in `xkcd.wbcr/`.
+Then you can visit <http://localhost:9227/> to have the same effect as visiting <http://xkcd.com/> directly, except that all requests are archived in `xkcd.wbcr/`.
 
-When you access an HTTP resource through the webcrystal proxy for the first time, it will be fetched from the origin HTTP server and archived locally.
-
-All subsequent requests for the same resource will be returned from the archive.
-
-
-## Known Limitations
-
-* Sites that vary the content served at a particular URL depending on whether you are logged in or not can only have one version of the URL archived.
-
-
-## Requirements
-
-* Python 3.4+
-* Make
-* `pip3 install -r requirements.txt`
-
-
-## Running the Tests
-
-```
-make test
-```
-
-
-## Gathering Code Coverage Metrics
-
-```
-make coverage
-open htmlcov/index.html
-```
+When you access an HTTP resource through the webcrystal proxy for the first time, it will be fetched from the origin HTTP server and archived locally. All subsequent requests for the same resource will be returned from the archive.
 
 
 ## CLI
@@ -67,7 +39,7 @@ python3 webcrystal.py <port> <archive_dirpath> [<default_origin_domain>]
 
 While the proxy is running, it responds to the following API endpoints.
 
-Notice that GET is an accepted HTTP method for all endpoints, so that they can be requested using a regular web browser easily.
+Notice that GET is an accepted method for all endpoints, so that they can be easily requested using a regular web browser.
 
 ### `GET,HEAD /`
 
@@ -122,14 +94,13 @@ When this proxy is started with a command like:
 python3 webcrystal.py 9227 xkcd.wbcr
 ```
 
-It creates a Project in the directory `xkcd.wbcr` in the following format:
+It creates an archive in the directory `xkcd.wbcr/` in the following format:
 
 
 ### `xkcd.wbcr/index.txt`
 
-* Text file listing the URL of each archived HTTP Resource, one per line.
-* UTF-8 encoded.
-* Unix line endings.
+* Lists the URL of each archived HTTP resource, one per line.
+* UTF-8 encoded text file with Unix line endings (`\n`).
 
 Example:
 
@@ -139,13 +110,13 @@ http://xkcd.com/s/b0dcca.css
 http://xkcd.com/1645/
 ```
 
-The preceding example project contains 3 HTTP Resources, numbered #0, #1, and #2.
+The preceding example project contains 3 HTTP resources, numbered #0, #1, and #2.
 
 
 ### `xkcd.wbcr/0.request_headers.json`
 
-* JSON file listing the HTTP request headers sent to the origin HTTP server to obtain the HTTP resource.
-* UTF-8 encoded.
+* Contains the HTTP request headers sent to the origin HTTP server to obtain HTTP resource #0.
+* UTF-8 encoded JSON file.
 
 Example:
 
@@ -156,9 +127,9 @@ Example:
 
 ### `xkcd.wbcr/0.response_headers.json`
 
-* JSON file listing the HTTP response headers received from the origin HTTP server when obtaining the HTTP resource.
-* UTF-8 encoded.
-* Contains an internal "X-Status-Code" header that indicates the HTTP response code received from the origin HTTP server.
+* Contains the HTTP response headers received from the origin HTTP server when obtaining HTTP resource #0.
+* UTF-8 encoded JSON file.
+* Contains an internal "X-Status-Code" header that indicates the HTTP status code received from the origin HTTP server.
 
 Example:
 
@@ -168,7 +139,30 @@ Example:
 
 ### `xkcd.wbcr/0.response_body.dat`
 
-* Binary file containing the contents of the HTTP response body received from the origin HTTP server when obtaining the HTTP resource.
+* Contains the contents of the HTTP response body received from the origin HTTP server when obtaining HTTP resource #0.
+* Binary file.
+
+
+## Contributing
+
+### Running the Tests
+
+```
+make test
+```
+
+### Gathering Code Coverage Metrics
+
+```
+make coverage
+open htmlcov/index.html
+```
+
+
+## Known Limitations
+
+* Sites that vary the content served at a particular URL depending on whether you are logged in can have only one version of the URL archived.
+
 
 
 ## License

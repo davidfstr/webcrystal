@@ -10,7 +10,14 @@ import shutil
 from socketserver import ThreadingMixIn
 import sys
 from threading import Lock
-import urllib3
+
+try:
+    import urllib3
+except ImportError:
+    raise ImportError('webcrystal requires urllib3. Try: pip3 install urllib3')
+
+if not (sys.version_info >= (3, 4)):
+    raise ImportError('webcrystal requires Python 3.4 or later.')
 
 
 # ==============================================================================
