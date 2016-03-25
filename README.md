@@ -12,6 +12,7 @@ webcrystal is intended as a tool for archiving websites.
 * Compact package: One .py file. Only one dependency (`urllib3`).
 * A simple documented archival format.
 * Nearly 100% code coverage.
+* Friendly MIT license.
 
 ## Usage
 
@@ -110,7 +111,7 @@ http://xkcd.com/s/b0dcca.css
 http://xkcd.com/1645/
 ```
 
-The preceding example project contains 3 HTTP resources, numbered #0, #1, and #2.
+The preceding example archive contains 3 HTTP resources, numbered #0, #1, and #2.
 
 
 ### `xkcd.wbcr/0.request_headers.json`
@@ -167,6 +168,4 @@ open htmlcov/index.html
 
 ## License
 
-Copyright (c) 2016 by David Foster
-
-You must ask me for permission before incorporating this software into your own software projects.
+This code is provided under the MIT License. See LICENSE file for details.
