@@ -5,8 +5,8 @@
 # OS X
 .DS_Store
 
-# Caches
-*.cache
+# Archives
+*.wbcr
 
 # PyCharm
 .idea
