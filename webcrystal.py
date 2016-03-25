@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+"""
+webcrystal is:
+
+1. An HTTP proxy and web service that saves every web page accessed through it to disk.
+2. An on-disk archival format for storing websites.
+
+webcrystal is intended as a tool for archiving websites.
+
+See the README for more information.
+"""
+
 import argparse
 import atexit
 from collections import namedtuple, OrderedDict
@@ -65,6 +77,7 @@ def main(raw_cli_args):
                 is_quiet=cli_args.is_quiet,
                 proxy_state=proxy_state)
         
+        # Run service until user presses ^C
         if not cli_args.is_quiet:
             print('Listening on %s:%s' % (proxy_info.host, proxy_info.port))
         httpd = ThreadedHttpServer(

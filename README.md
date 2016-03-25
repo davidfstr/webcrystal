@@ -18,7 +18,7 @@ webcrystal is intended as a tool for archiving websites.
 To start the proxy run a command like:
 
 ```
-python3 webcrystal.py 9227 xkcd.wbcr http://xkcd.com/
+./webcrystal.py 9227 xkcd.wbcr http://xkcd.com/
 ```
 
 Then you can visit <http://localhost:9227/> to have the same effect as visiting <http://xkcd.com/> directly, except that all requests are archived in `xkcd.wbcr/`.
@@ -31,7 +31,7 @@ When you access an HTTP resource through the webcrystal proxy for the first time
 ### Starting the Proxy
 
 ```
-python3 webcrystal.py [--help] [--quiet] <port> <archive_dirpath> [<default_origin_domain>]
+./webcrystal.py [--help] [--quiet] <port> <archive_dirpath> [<default_origin_domain>]
 ```
 
 
@@ -91,7 +91,7 @@ Deletes the specified URL in the archive. Returns:
 When this proxy is started with a command like:
 
 ```
-python3 webcrystal.py 9227 xkcd.wbcr
+./webcrystal.py 9227 xkcd.wbcr
 ```
 
 It creates an archive in the directory `xkcd.wbcr/` in the following format:
