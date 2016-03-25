@@ -31,7 +31,7 @@ When you access an HTTP resource through the webcrystal proxy for the first time
 ### Starting the Proxy
 
 ```
-python3 webcrystal.py <port> <archive_dirpath> [<default_origin_domain>]
+python3 webcrystal.py [--help] [--quiet] <port> <archive_dirpath> [<default_origin_domain>]
 ```
 
 

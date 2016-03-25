@@ -1,3 +1,4 @@
+import argparse
 import atexit
 from collections import namedtuple, OrderedDict
 import html
@@ -28,26 +29,26 @@ http = urllib3.PoolManager()
 
 
 def main(options):
-    is_quiet = False
-    
-    # Parse flags
-    if len(options) >= 1 and options[0] in ['-q', '--quiet']:
-        is_quiet = True
-        options = options[1:]
-    
     # Parse arguments
-    if len(options) == 3:
-        (port, archive_dirpath, default_origin_domain) = options
-    else:
-        (port, archive_dirpath,) = options
-        default_origin_domain = None
-    proxy_info = ProxyInfo(
-        host='127.0.0.1',
-        port=int(port),
-    )
+    parser = argparse.ArgumentParser(
+        description='An archiving HTTP proxy and web service.',
+        add_help=False)
+    parser.add_argument('-h', '--help', action='help',
+        help='Show this help message and exit.')
+    parser.add_argument('-q', '--quiet', action='store_true', dest='is_quiet',
+        help='Suppresses all output.')
+    parser.add_argument('port', type=int,
+        help='Port on which to run the HTTP proxy.')
+    parser.add_argument('archive_dirpath',
+        help='Path to the archive directory. Usually has .wbcr extension.')
+    parser.add_argument('default_origin_domain', nargs='?',
+        help='Default HTTP domain which the HTTP proxy will redirect to if no URL is specified.')
+    cli_args = parser.parse_args()
+    
+    proxy_info = ProxyInfo(host='127.0.0.1', port=cli_args.port)
     
     # Open archive
-    archive = HttpResourceArchive(archive_dirpath)
+    archive = HttpResourceArchive(cli_args.archive_dirpath)
     try:
         atexit.register(lambda: archive.close())  # last resort
         
@@ -60,11 +61,11 @@ def main(options):
             return ArchivingHTTPRequestHandler(*args,
                 archive=archive,
                 proxy_info=proxy_info,
-                default_origin_domain=default_origin_domain,
-                is_quiet=is_quiet,
+                default_origin_domain=cli_args.default_origin_domain,
+                is_quiet=cli_args.is_quiet,
                 proxy_state=proxy_state)
         
-        if not is_quiet:
+        if not cli_args.is_quiet:
             print('Listening on %s:%s' % (proxy_info.host, proxy_info.port))
         httpd = ThreadedHttpServer(
             (proxy_info.host, proxy_info.port),
