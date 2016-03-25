@@ -1,6 +1,6 @@
-import caching_proxy
-from caching_proxy import _format_proxy_path as format_proxy_path
-from caching_proxy import _format_proxy_url as format_proxy_url
+import webcrystal
+from webcrystal import _format_proxy_path as format_proxy_path
+from webcrystal import _format_proxy_url as format_proxy_url
 from collections import OrderedDict
 import gzip
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -29,7 +29,7 @@ _PROXY_PORT = 9000
 _DEFAULT_DOMAIN_PORT = 9001
 _OTHER_DOMAIN_PORT = 9002
 
-_PROXY_INFO = caching_proxy.ProxyInfo(host=_HOST, port=_PROXY_PORT)
+_PROXY_INFO = webcrystal.ProxyInfo(host=_HOST, port=_PROXY_PORT)
 
 _DEFAULT_DOMAIN = '%s:%s' % (_HOST, _DEFAULT_DOMAIN_PORT)
 _OTHER_DOMAIN = '%s:%s' % (_HOST, _OTHER_DOMAIN_PORT)
@@ -430,7 +430,7 @@ class CachingProxyTests(TestCase):
         global _expected_request_headers
         
         SAFE_REQUEST_HEADERS = [
-            h for h in caching_proxy._REQUEST_HEADER_WHITELIST
+            h for h in webcrystal._REQUEST_HEADER_WHITELIST
             if h not in ['host', 'referer']
         ]
         
@@ -450,7 +450,7 @@ class CachingProxyTests(TestCase):
         global _response_headers_to_send
         
         SAFE_RESPONSE_HEADERS = [
-            h for h in caching_proxy._RESPONSE_HEADER_WHITELIST
+            h for h in webcrystal._RESPONSE_HEADER_WHITELIST
             if h.startswith('x-')
         ]
         
@@ -638,11 +638,11 @@ class _HttpResponse:
 
 def start_proxy_server(port, default_origin_domain):
     cache_dirpath = os.path.join(
-        tempfile.mkdtemp(prefix='caching_proxy_test_cache'),
+        tempfile.mkdtemp(prefix='webcrystal_test_cache'),
         'default_origin.cache')
     
     process = Process(
-        target=caching_proxy.main,
+        target=webcrystal.main,
         args=(['--quiet', str(port), cache_dirpath, default_origin_domain],))
     process.start()
     
