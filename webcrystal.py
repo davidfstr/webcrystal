@@ -37,19 +37,19 @@ def main(options):
     
     # Parse arguments
     if len(options) == 3:
-        (port, cache_dirpath, default_origin_domain) = options
+        (port, archive_dirpath, default_origin_domain) = options
     else:
-        (port, cache_dirpath,) = options
+        (port, archive_dirpath,) = options
         default_origin_domain = None
     proxy_info = ProxyInfo(
         host='127.0.0.1',
         port=int(port),
     )
     
-    # Open cache
-    cache = HttpResourceCache(cache_dirpath)
+    # Open archive
+    archive = HttpResourceArchive(archive_dirpath)
     try:
-        atexit.register(lambda: cache.close())  # last resort
+        atexit.register(lambda: archive.close())  # last resort
         
         # ProxyState -- is mutable and threadsafe
         proxy_state = {
@@ -57,8 +57,8 @@ def main(options):
         }
         
         def create_request_handler(*args):
-            return CachingHTTPRequestHandler(*args,
-                cache=cache,
+            return ArchivingHTTPRequestHandler(*args,
+                archive=archive,
                 proxy_info=proxy_info,
                 default_origin_domain=default_origin_domain,
                 is_quiet=is_quiet,
@@ -76,7 +76,7 @@ def main(options):
         finally:
             httpd.server_close()
     finally:
-        cache.close()
+        archive.close()
 
 
 ProxyInfo = namedtuple('ProxyInfo', ['host', 'port'])
@@ -86,15 +86,15 @@ class ThreadedHttpServer(ThreadingMixIn, HTTPServer):
     pass
 
 
-class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
+class ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
     """
-    HTTP request handler that serves requests from an HttpResourceCache.
-    When a resource is requested that isn't in the cache, it will be added
-    to the cache automatically.
+    HTTP request handler that serves requests from an HttpResourceArchive.
+    When a resource is requested that isn't in the archive, it will be added
+    to the archive automatically.
     """
     
-    def __init__(self, *args, cache, proxy_info, default_origin_domain, is_quiet, proxy_state):
-        self._cache = cache
+    def __init__(self, *args, archive, proxy_info, default_origin_domain, is_quiet, proxy_state):
+        self._archive = archive
         self._proxy_info = proxy_info
         self._default_origin_domain = default_origin_domain
         self._is_quiet = is_quiet
@@ -160,7 +160,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 parsed_request_url.path
             )
             
-            did_exist = self._cache.delete(request_url)
+            did_exist = self._archive.delete(request_url)
             if did_exist:
                 return self._send_head_for_simple_response(200)  # OK
             else:
@@ -178,11 +178,11 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 parsed_request_url.path
             )
             
-            request_headers = self._cache.get_request_headers(request_url)
+            request_headers = self._archive.get_request_headers(request_url)
             if request_headers is None:
                 return self._send_head_for_simple_response(404)  # Not Found
             
-            resource = self._fetch_from_origin_and_store_in_cache(
+            resource = self._fetch_from_origin_and_store_in_archive(
                 request_url, request_headers,
                 parsed_request_url=parsed_request_url)
             resource.content.close()
@@ -250,7 +250,7 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         )
         
         # If client performs a hard refresh (Command-Shift-R in Chrome),
-        # ignore any cached response and refetch a fresh resource from the origin server.
+        # ignore any archived response and refetch a fresh resource from the origin server.
         request_cache_control = canonical_request_headers.get('cache-control')
         request_pragma = canonical_request_headers.get('pragma')
         should_disable_cache = (
@@ -262,13 +262,13 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 'no-cache' in request_pragma)
         )
         
-        # Try fetch requested resource from cache.
+        # Try fetch requested resource from archive.
         if should_disable_cache:
             resource = None
         else:
-            resource = self._cache.get(request_url)
+            resource = self._archive.get(request_url)
         
-        # If missing fetch the resource from the origin and add it to the cache.
+        # If missing fetch the resource from the origin and add it to the archive.
         if resource is None:
             # Fail if in offline mode
             if not self._proxy_state['is_online']:
@@ -277,20 +277,20 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 
                 return BytesIO(
-                    (('<html>Resource <a href="%s">%s</a> is not cached, ' +
+                    (('<html>Resource <a href="%s">%s</a> is not archived, ' +
                       'and this proxy is in offline mode. Go <a href="/_online">online</a>?</html>') %
                       (html.escape(request_url), html.escape(request_url))
                     ).encode('utf8')
                 )
             
-            resource = self._fetch_from_origin_and_store_in_cache(
+            resource = self._fetch_from_origin_and_store_in_archive(
                 request_url,
                 self.headers,
                 parsed_request_url=parsed_request_url)
         
         return self._send_head_for_resource(resource)
     
-    def _fetch_from_origin_and_store_in_cache(
+    def _fetch_from_origin_and_store_in_archive(
             self, request_url, request_headers, *, parsed_request_url):
         request_headers = OrderedDict(request_headers)  # clone
         
@@ -323,14 +323,14 @@ class CachingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         response_content = BytesIO(response_content_bytes)
         try:
-            self._cache.put(request_url, request_headers, HttpResource(
+            self._archive.put(request_url, request_headers, HttpResource(
                 headers=response_headers,
                 content=response_content
             ))
         finally:
             response_content.close()
         
-        resource = self._cache.get(request_url)
+        resource = self._archive.get(request_url)
         assert resource is not None
         
         return resource
@@ -507,7 +507,7 @@ def _reformat_absolute_urls_in_content(resource_headers, resource_content, *, pr
     """
     If specified resource is an HTML document, replaces any obvious absolute
     URL references with references of the format "/_/http/..." that will be
-    interpreted by the caching proxy appropriately.
+    interpreted by the archiving proxy appropriately.
 
     Otherwise returns the original content unmodified.
     """
@@ -716,9 +716,9 @@ def _format_proxy_url_in_bytes(protocol, domain, path, *, proxy_info):
 HttpResource = namedtuple('HttpResource', ['headers', 'content'])
 
 
-class HttpResourceCache:
+class HttpResourceArchive:
     """
-    Persistent cache of HTTP resources, include the full content and headers of
+    Persistent archive of HTTP resources, include the full content and headers of
     each resource.
 
     This class is threadsafe.
@@ -726,32 +726,32 @@ class HttpResourceCache:
 
     def __init__(self, root_dirpath):
         """
-        Opens the existing cache at the specified directory,
-        or creates a new cache if there is no such directory.
+        Opens the existing archive at the specified directory,
+        or creates a new archive if there is no such directory.
         """
         self._closed = False
         self._lock = Lock()
         self._root_dirpath = root_dirpath
 
-        # Create empty cache if cache does not already exist
+        # Create empty archive if archive does not already exist
         if not os.path.exists(root_dirpath):
             os.mkdir(root_dirpath)
             with self._open_index('w') as f:
                 f.write('')
 
-        # Load cache
+        # Load archive
         with self._open_index('r') as f:
             self._urls = f.read().split('\n')
             if self._urls == ['']:
                 self._urls = []
-        # NOTE: It is possible for the cache to contain multiple IDs for the
+        # NOTE: It is possible for the archive to contain multiple IDs for the
         #       same path under rare circumstances. In that case the last ID wins.
         self._resource_id_for_url = {url: i for (i, url) in enumerate(self._urls)}
 
     def get(self, url):
         """
-        Gets the HttpResource at the specified url from this cache,
-        or None if the specified resource is not in the cache.
+        Gets the HttpResource at the specified url from this archive,
+        or None if the specified resource is not in the archive.
         """
         with self._lock:
             resource_id = self._resource_id_for_url.get(url)
@@ -768,8 +768,8 @@ class HttpResourceCache:
     
     def get_request_headers(self, url):
         """
-        Gets the request headers for the resource at the specified url from this cache,
-        or None if the specified resource is not in the cache.
+        Gets the request headers for the resource at the specified url from this archive,
+        or None if the specified resource is not in the archive.
         """
         with self._lock:
             resource_id = self._resource_id_for_url.get(url)
@@ -781,11 +781,11 @@ class HttpResourceCache:
 
     def put(self, url, request_headers, resource):
         """
-        Puts the specified HttpResource into this cache, replacing any previous
+        Puts the specified HttpResource into this archive, replacing any previous
         resource with the same url.
 
-        If two difference resources are put into this cache at the same url
-        concurrently, the last one put into the cache will eventually win.
+        If two difference resources are put into this archive at the same url
+        concurrently, the last one put into the archive will eventually win.
         """
         # Reserve resource ID (if new)
         with self._lock:
@@ -817,7 +817,7 @@ class HttpResourceCache:
     
     def delete(self, url):
         """
-        Deletes the specified resource from this cache if it exists.
+        Deletes the specified resource from this archive if it exists.
         
         Returns whether the specified resource was found and deleted.
         """
@@ -834,7 +834,7 @@ class HttpResourceCache:
 
     def flush(self):
         """
-        Flushes all pending changes made to this cache to disk.
+        Flushes all pending changes made to this archive to disk.
         """
         # TODO: Make this operation atomic, even if the write fails in the middle.
         with self._open_index('w') as f:
@@ -842,7 +842,7 @@ class HttpResourceCache:
 
     def close(self):
         """
-        Closes this cache.
+        Closes this archive.
         """
         if self._closed:
             return

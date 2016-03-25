@@ -229,7 +229,7 @@ _OTHER_SERVER_RESPONSES = {  # like a social network
     )),
 }
 
-class CachingProxyTests(TestCase):
+class ArchivingProxyTests(TestCase):
     @classmethod
     def setUpClass(cls):
         cls._proxy_server = start_proxy_server(_PROXY_PORT, _DEFAULT_DOMAIN)
@@ -470,9 +470,9 @@ class CachingProxyTests(TestCase):
                 [k for k in response.headers.keys() if k in _response_headers_to_send]
             self.assertEqual(headers, matching_response_headers)
     
-    # === Cache Behavior: Online ===
+    # === Archiving Behavior: Online ===
     
-    def test_returns_cached_response_by_default_if_available(self):
+    def test_returns_archived_response_by_default_if_available(self):
         global _default_server_counter
         
         _default_server_counter = 1
@@ -493,7 +493,7 @@ class CachingProxyTests(TestCase):
     def test_always_returns_fresh_response_if_cache_disabled(self):
         global _default_server_counter
         
-        self.test_returns_cached_response_by_default_if_available()
+        self.test_returns_archived_response_by_default_if_available()
         
         _default_server_counter = 3
         response = self._get(
@@ -502,9 +502,9 @@ class CachingProxyTests(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual('3', response.text)  # should be fresh
     
-    # === Cache Behavior: Offline ===
+    # === Archiving Behavior: Offline ===
     
-    def test_fetch_of_cached_resource_in_offline_mode_returns_the_resource(self):
+    def test_fetch_of_archived_resource_in_offline_mode_returns_the_resource(self):
         response = self._get(
             format_proxy_path('http', _DEFAULT_DOMAIN, '/'),
             cache=False)
@@ -521,7 +521,7 @@ class CachingProxyTests(TestCase):
         finally:
             self._go_online()
     
-    def test_fetch_of_uncached_resource_in_offline_mode_returns_http_503(self):
+    def test_fetch_of_unarchived_resource_in_offline_mode_returns_http_503(self):
         response = self._get(
             format_proxy_path('http', _DEFAULT_DOMAIN, '/',
                 command='_delete'),
@@ -637,13 +637,13 @@ class _HttpResponse:
 # Real Proxy Server
 
 def start_proxy_server(port, default_origin_domain):
-    cache_dirpath = os.path.join(
-        tempfile.mkdtemp(prefix='webcrystal_test_cache'),
-        'default_origin.cache')
+    archive_dirpath = os.path.join(
+        tempfile.mkdtemp(prefix='webcrystal_test_archive'),
+        'default_origin.wbcr')
     
     process = Process(
         target=webcrystal.main,
-        args=(['--quiet', str(port), cache_dirpath, default_origin_domain],))
+        args=(['--quiet', str(port), archive_dirpath, default_origin_domain],))
     process.start()
     
     return process
