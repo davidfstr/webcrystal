@@ -57,7 +57,7 @@ def main(raw_cli_args):
         help='Default HTTP domain which the HTTP proxy will redirect to if no URL is specified.')
     cli_args = parser.parse_args(raw_cli_args)
     
-    proxy_info = ProxyInfo(host='127.0.0.1', port=cli_args.port)
+    proxy_info = _ProxyInfo(host='127.0.0.1', port=cli_args.port)
     
     # Open archive
     archive = HttpResourceArchive(cli_args.archive_dirpath)
@@ -70,7 +70,7 @@ def main(raw_cli_args):
         }
         
         def create_request_handler(*args):
-            return ArchivingHTTPRequestHandler(*args,
+            return _ArchivingHTTPRequestHandler(*args,
                 archive=archive,
                 proxy_info=proxy_info,
                 default_origin_domain=cli_args.default_origin_domain,
@@ -80,7 +80,7 @@ def main(raw_cli_args):
         # Run service until user presses ^C
         if not cli_args.is_quiet:
             print('Listening on %s:%s' % (proxy_info.host, proxy_info.port))
-        httpd = ThreadedHttpServer(
+        httpd = _ThreadedHttpServer(
             (proxy_info.host, proxy_info.port),
             create_request_handler)
         try:
@@ -107,14 +107,14 @@ def _domain(domain_descriptor):
     return domain
 
 
-ProxyInfo = namedtuple('ProxyInfo', ['host', 'port'])
+_ProxyInfo = namedtuple('_ProxyInfo', ['host', 'port'])
 
 
-class ThreadedHttpServer(ThreadingMixIn, HTTPServer):
+class _ThreadedHttpServer(ThreadingMixIn, HTTPServer):
     pass
 
 
-class ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
+class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
     """
     HTTP request handler that serves requests from an HttpResourceArchive.
     When a resource is requested that isn't in the archive, it will be added

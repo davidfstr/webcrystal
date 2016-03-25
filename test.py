@@ -30,7 +30,7 @@ _PROXY_PORT = 9000
 _DEFAULT_DOMAIN_PORT = 9001
 _OTHER_DOMAIN_PORT = 9002
 
-_PROXY_INFO = webcrystal.ProxyInfo(host=_HOST, port=_PROXY_PORT)
+_PROXY_INFO = webcrystal._ProxyInfo(host=_HOST, port=_PROXY_PORT)
 
 _DEFAULT_DOMAIN = '%s:%s' % (_HOST, _DEFAULT_DOMAIN_PORT)
 _OTHER_DOMAIN = '%s:%s' % (_HOST, _OTHER_DOMAIN_PORT)
