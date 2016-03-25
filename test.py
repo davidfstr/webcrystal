@@ -11,10 +11,11 @@ import os.path
 import random
 import shutil
 import signal
+import sys
 import tempfile
 from threading import Thread
 import unittest
-from unittest import skip, TestCase
+from unittest import mock, skip, TestCase
 import urllib3
 
 
@@ -599,6 +600,10 @@ class ArchivingProxyTests(TestCase):
     
     # === Misc ===
     
+    def test_invalid_command_is_rejected(self):
+        response = self._get('/_bogus/')
+        self.assertEqual(400, response.status_code)  # Bad Request
+    
     def test_fetch_of_invalid_proxy_url_returns_bad_request(self):
         response = self._get('/_/bogus_url')
         self.assertEqual(400, response.status_code)  # Bad Request
@@ -668,6 +673,33 @@ class _HttpResponse:
     @property
     def content(self):
         return self._urllib3_response.data
+
+
+class WebCrystalModuleTests(TestCase):
+    def test_missing_urllib3_gives_nice_error_message(self):
+        with mock.patch.dict('sys.modules', {'urllib3': None}):
+            del sys.modules['webcrystal']  # unimport
+            try:
+                import webcrystal
+            except ImportError as e:
+                self.assertIn('webcrystal requires urllib3. Try: pip3 install urllib3', str(e))
+            else:
+                self.fail()
+    
+    def test_unsupported_python_version_gives_nice_error_message(self):
+        old_version_info = sys.version_info
+        try:
+            sys.version_info = (2, 7)
+            
+            del sys.modules['webcrystal']  # unimport
+            try:
+                import webcrystal
+            except ImportError as e:
+                self.assertIn('webcrystal requires Python 3.4 or later.', str(e))
+            else:
+                self.fail()
+        finally:
+            sys.version_info = old_version_info
 
 
 # ------------------------------------------------------------------------------
