@@ -41,7 +41,7 @@ def main(options):
         help='Port on which to run the HTTP proxy.')
     parser.add_argument('archive_dirpath',
         help='Path to the archive directory. Usually has .wbcr extension.')
-    parser.add_argument('default_origin_domain', nargs='?',
+    parser.add_argument('default_origin_domain', nargs='?', type=_domain,
         help='Default HTTP domain which the HTTP proxy will redirect to if no URL is specified.')
     cli_args = parser.parse_args()
     
@@ -78,6 +78,20 @@ def main(options):
             httpd.server_close()
     finally:
         archive.close()
+
+
+def _domain(domain_descriptor):
+    m = re.search(r'^(?:(https?)://)?([^/]+)/?$', domain_descriptor)
+    if m is None:
+        raise argparse.ArgumentTypeError(
+            '%r must look like %r or %r' %
+            (domain_descriptor, 'xkcd.com', 'http://xkcd.com/'))
+    (protocol, domain) = m.groups()
+    if protocol == 'https':
+        raise argparse.ArgumentTypeError(
+            'The %r protocol is not supported for the default origin domain. Try %r instead.' %
+            ('https', 'http'))
+    return domain
 
 
 ProxyInfo = namedtuple('ProxyInfo', ['host', 'port'])
