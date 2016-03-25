@@ -1,6 +1,7 @@
 # caching_proxy.py
 
-An HTTP proxy that caches and persists all web pages accessed through it.
+An HTTP proxy that saves every web page accessed through it.
+This is useful for automatically archiving websites.
 
 When a HTTP resource is requested for the first time it will be fetched from the origin HTTP server and cached locally. All subsequent requests for the same resource will be returned from the cache.
 
@@ -106,6 +107,63 @@ Deletes the specified URL in the cache. Returns:
 
 * HTTP 200 (OK) if successful or
 * HTTP 404 (Not Found) if the specified URL was not in the cache.
+
+
+## Archival Format
+
+When this proxy is started with a command like:
+
+```
+python3 caching_proxy.py 6969 xkcd.cache
+```
+
+It creates a Project in the directory `xkcd.cache` in the following format:
+
+
+### `xkcd.cache/_index`
+
+* Text file listing the URL of each archived HTTP Resource, one per line.
+* UTF-8 encoded.
+* Unix line endings.
+
+Example:
+
+```
+http://xkcd.com/
+http://xkcd.com/s/b0dcca.css
+http://xkcd.com/1645/
+```
+
+The preceding example project contains 3 HTTP Resources, numbered #0, #1, and #2.
+
+
+### `xkcd.cache/0.request`
+
+* JSON file listing the HTTP request headers sent to the origin HTTP server to obtain the HTTP resource.
+* UTF-8 encoded.
+
+Example:
+
+```
+{"Accept-Language": "en-us", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Host": "xkcd.com", "Accept-Encoding": "gzip, deflate", "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_3) AppleWebKit/601.4.4 (KHTML, like Gecko) Version/9.0.3 Safari/601.4.4"}
+```
+
+
+### `xkcd.cache/0.headers`
+
+* JSON file listing the HTTP response headers received from the origin HTTP server when obtaining the HTTP resource.
+* UTF-8 encoded.
+* Contains an internal "X-Status-Code" header that indicates the HTTP response code received from the origin HTTP server.
+
+Example:
+
+```
+{"Cache-Control": "public", "Connection": "keep-alive", "Accept-Ranges": "bytes", "X-Cache-Hits": "0", "Date": "Tue, 15 Mar 2016 04:37:05 GMT", "Age": "0", "X-Served-By": "cache-sjc3628-SJC", "Content-Type": "text/html", "Server": "lighttpd/1.4.28", "X-Status-Code": "404", "X-Cache": "MISS", "Content-Length": "345", "X-Timer": "S1458016625.375814,VS0,VE148", "Via": "1.1 varnish"}
+```
+
+### `xkcd.cache/0.content`
+
+* Binary file containing the contents of the HTTP response body received from the origin HTTP server when obtaining the HTTP resource.
 
 
 ## License
