@@ -144,17 +144,18 @@ class HttpResourceCache:
     # === Utility ===
 
     def _open_index(self, mode='r'):
-        return open(os.path.join(self._root_dirpath, '_index'), mode, encoding='utf8')
+        return open(os.path.join(self._root_dirpath, 'index.txt'), mode, encoding='utf8')
     
     def _open_request_headers(self, resource_id, mode='r'):
-        return open(os.path.join(self._root_dirpath, '%d.request' % resource_id), mode, encoding='utf8')
+        return open(os.path.join(self._root_dirpath, '%d.request_headers.json' % resource_id), mode, encoding='utf8')
     
     def _open_response_headers(self, resource_id, mode='r'):
-        return open(os.path.join(self._root_dirpath, '%d.headers' % resource_id), mode, encoding='utf8')
+        return open(os.path.join(self._root_dirpath, '%d.response_headers.json' % resource_id), mode, encoding='utf8')
 
     def _open_response_content(self, resource_id, mode='rb'):
-        return open(os.path.join(self._root_dirpath, '%d.content' % resource_id), mode)
+        return open(os.path.join(self._root_dirpath, '%d.response_body.dat' % resource_id), mode)
     
     def _delete_resource(self, resource_id):
-        os.remove(os.path.join(self._root_dirpath, '%d.headers' % resource_id))
-        os.remove(os.path.join(self._root_dirpath, '%d.content' % resource_id))
+        os.remove(os.path.join(self._root_dirpath, '%d.request_headers.json' % resource_id))
+        os.remove(os.path.join(self._root_dirpath, '%d.response_headers.json' % resource_id))
+        os.remove(os.path.join(self._root_dirpath, '%d.response_body.dat' % resource_id))

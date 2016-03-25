@@ -120,7 +120,7 @@ python3 caching_proxy.py 6969 xkcd.cache
 It creates a Project in the directory `xkcd.cache` in the following format:
 
 
-### `xkcd.cache/_index`
+### `xkcd.cache/index.txt`
 
 * Text file listing the URL of each archived HTTP Resource, one per line.
 * UTF-8 encoded.
@@ -137,7 +137,7 @@ http://xkcd.com/1645/
 The preceding example project contains 3 HTTP Resources, numbered #0, #1, and #2.
 
 
-### `xkcd.cache/0.request`
+### `xkcd.cache/0.request_headers.json`
 
 * JSON file listing the HTTP request headers sent to the origin HTTP server to obtain the HTTP resource.
 * UTF-8 encoded.
@@ -149,7 +149,7 @@ Example:
 ```
 
 
-### `xkcd.cache/0.headers`
+### `xkcd.cache/0.response_headers.json`
 
 * JSON file listing the HTTP response headers received from the origin HTTP server when obtaining the HTTP resource.
 * UTF-8 encoded.
@@ -161,7 +161,7 @@ Example:
 {"Cache-Control": "public", "Connection": "keep-alive", "Accept-Ranges": "bytes", "X-Cache-Hits": "0", "Date": "Tue, 15 Mar 2016 04:37:05 GMT", "Age": "0", "X-Served-By": "cache-sjc3628-SJC", "Content-Type": "text/html", "Server": "lighttpd/1.4.28", "X-Status-Code": "404", "X-Cache": "MISS", "Content-Length": "345", "X-Timer": "S1458016625.375814,VS0,VE148", "Via": "1.1 varnish"}
 ```
 
-### `xkcd.cache/0.content`
+### `xkcd.cache/0.response_body.dat`
 
 * Binary file containing the contents of the HTTP response body received from the origin HTTP server when obtaining the HTTP resource.
 
