@@ -28,7 +28,7 @@ if not (sys.version_info >= (3, 4)):
 http = urllib3.PoolManager()
 
 
-def main(options):
+def main(raw_cli_args):
     # Parse arguments
     parser = argparse.ArgumentParser(
         description='An archiving HTTP proxy and web service.',
@@ -43,7 +43,7 @@ def main(options):
         help='Path to the archive directory. Usually has .wbcr extension.')
     parser.add_argument('default_origin_domain', nargs='?', type=_domain,
         help='Default HTTP domain which the HTTP proxy will redirect to if no URL is specified.')
-    cli_args = parser.parse_args()
+    cli_args = parser.parse_args(raw_cli_args)
     
     proxy_info = ProxyInfo(host='127.0.0.1', port=cli_args.port)
     
