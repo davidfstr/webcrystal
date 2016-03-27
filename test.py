@@ -11,9 +11,11 @@ import os.path
 import random
 import shutil
 import signal
+import socket
 import sys
 import tempfile
 from threading import Thread
+import time
 import unittest
 from unittest import mock, skip, TestCase
 import urllib3
@@ -715,6 +717,9 @@ def start_proxy_server(port, default_origin_domain):
         args=(['--quiet', str(port), archive_dirpath, default_origin_domain],))
     process.start()
     
+    while not is_port_open('127.0.0.1', port):
+        time.sleep(20/1000)
+    
     return process
 
 
@@ -740,6 +745,9 @@ def start_origin_server(port, responses):
     
     thread = Thread(target=httpd.serve_forever)
     thread.start()
+    
+    while not is_port_open('127.0.0.1', port):
+        time.sleep(20/1000)
     
     return httpd
 
@@ -791,6 +799,21 @@ class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
     
     def log_message(self, *args):
         pass  # operate silently
+
+
+# ------------------------------------------------------------------------------
+# Utility
+
+def is_port_open(hostname, port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        result = s.connect_ex((hostname, port))
+        if result == 0:
+            return True
+        else:
+            return False
+    finally:
+        s.close()
 
 
 # ------------------------------------------------------------------------------
