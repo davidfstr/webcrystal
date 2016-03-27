@@ -877,24 +877,28 @@ class HttpResourceArchive:
         self.flush()
         self._closed = True
 
-    # === Utility ===
+    # === Filesystem I/O ===
 
     def _open_index(self, mode='r'):
         return open(os.path.join(self._root_dirpath, 'index.txt'), mode, encoding='utf8')
     
     def _open_request_headers(self, resource_id, mode='r'):
-        return open(os.path.join(self._root_dirpath, '%d.request_headers.json' % resource_id), mode, encoding='utf8')
+        resource_ordinal = resource_id + 1
+        return open(os.path.join(self._root_dirpath, '%d.request_headers.json' % resource_ordinal), mode, encoding='utf8')
     
     def _open_response_headers(self, resource_id, mode='r'):
-        return open(os.path.join(self._root_dirpath, '%d.response_headers.json' % resource_id), mode, encoding='utf8')
+        resource_ordinal = resource_id + 1
+        return open(os.path.join(self._root_dirpath, '%d.response_headers.json' % resource_ordinal), mode, encoding='utf8')
 
     def _open_response_content(self, resource_id, mode='rb'):
-        return open(os.path.join(self._root_dirpath, '%d.response_body.dat' % resource_id), mode)
+        resource_ordinal = resource_id + 1
+        return open(os.path.join(self._root_dirpath, '%d.response_body.dat' % resource_ordinal), mode)
     
     def _delete_resource(self, resource_id):
-        os.remove(os.path.join(self._root_dirpath, '%d.request_headers.json' % resource_id))
-        os.remove(os.path.join(self._root_dirpath, '%d.response_headers.json' % resource_id))
-        os.remove(os.path.join(self._root_dirpath, '%d.response_body.dat' % resource_id))
+        resource_ordinal = resource_id + 1
+        os.remove(os.path.join(self._root_dirpath, '%d.request_headers.json' % resource_ordinal))
+        os.remove(os.path.join(self._root_dirpath, '%d.response_headers.json' % resource_ordinal))
+        os.remove(os.path.join(self._root_dirpath, '%d.response_body.dat' % resource_ordinal))
 
 
 # ------------------------------------------------------------------------------

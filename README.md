@@ -111,12 +111,12 @@ http://xkcd.com/s/b0dcca.css
 http://xkcd.com/1645/
 ```
 
-The preceding example archive contains 3 HTTP resources, numbered #0, #1, and #2.
+The preceding example archive contains 3 HTTP resources, numbered #1, #2, and #3.
 
 
-### `xkcd.wbcr/0.request_headers.json`
+### `xkcd.wbcr/1.request_headers.json`
 
-* Contains the HTTP request headers sent to the origin HTTP server to obtain HTTP resource #0.
+* Contains the HTTP request headers sent to the origin HTTP server to obtain HTTP resource #1.
 * UTF-8 encoded JSON file.
 
 Example:
@@ -126,9 +126,9 @@ Example:
 ```
 
 
-### `xkcd.wbcr/0.response_headers.json`
+### `xkcd.wbcr/1.response_headers.json`
 
-* Contains the HTTP response headers received from the origin HTTP server when obtaining HTTP resource #0.
+* Contains the HTTP response headers received from the origin HTTP server when obtaining HTTP resource #1.
 * UTF-8 encoded JSON file.
 * Contains an internal "X-Status-Code" header that indicates the HTTP status code received from the origin HTTP server.
 
@@ -138,9 +138,9 @@ Example:
 {"Cache-Control": "public", "Connection": "keep-alive", "Accept-Ranges": "bytes", "X-Cache-Hits": "0", "Date": "Tue, 15 Mar 2016 04:37:05 GMT", "Age": "0", "X-Served-By": "cache-sjc3628-SJC", "Content-Type": "text/html", "Server": "lighttpd/1.4.28", "X-Status-Code": "404", "X-Cache": "MISS", "Content-Length": "345", "X-Timer": "S1458016625.375814,VS0,VE148", "Via": "1.1 varnish"}
 ```
 
-### `xkcd.wbcr/0.response_body.dat`
+### `xkcd.wbcr/1.response_body.dat`
 
-* Contains the contents of the HTTP response body received from the origin HTTP server when obtaining HTTP resource #0.
+* Contains the contents of the HTTP response body received from the origin HTTP server when obtaining HTTP resource #1.
 * Binary file.
 
 
