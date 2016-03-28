@@ -50,7 +50,7 @@ def main(raw_cli_args):
     parser.add_argument('-q', '--quiet', action='store_true', dest='is_quiet',
         help='Suppresses all output.')
     parser.add_argument('port', type=int,
-        help='Port on which to run the HTTP proxy.')
+        help='Port on which to run the HTTP proxy. Suggest 9227 (WBCR).')
     parser.add_argument('archive_dirpath',
         help='Path to the archive directory. Usually has .wbcr extension.')
     parser.add_argument('default_origin_domain', nargs='?', type=_domain,

@@ -5,7 +5,7 @@ webcrystal is:
 1. An HTTP proxy and web service that saves every web page accessed through it to disk.
 2. An on-disk archival format for storing websites.
 
-webcrystal is intended as a tool for archiving websites.
+webcrystal is intended as a tool for archiving websites. It is intended to be convenient to write HTTP-based web scrapers and browser-based web scrapers on top of.
 
 ## Features
 
@@ -13,8 +13,9 @@ webcrystal is intended as a tool for archiving websites.
 * A simple documented archival format.
 * Nearly 100% code coverage.
 * Friendly MIT license.
+* Excellent documentation.
 
-## Usage
+## Quickstart
 
 To start the proxy run a command like:
 
@@ -29,22 +30,53 @@ When you access an HTTP resource through the webcrystal proxy for the first time
 
 ## CLI
 
-### Starting the Proxy
+To start the webcrystal proxy:
 
 ```
 ./webcrystal.py [--help] [--quiet] <port> <archive_dirpath> [<default_origin_domain>]
 ```
 
+To stop the proxy press ^C or send a SIGINT signal to it.
 
-## API
+### Full Syntax
 
-While the proxy is running, it responds to the following API endpoints.
+```
+./webcrystal.py --help
+```
 
-Notice that GET is an accepted method for all endpoints, so that they can be easily requested using a regular web browser.
+This outputs:
+
+```
+usage: webcrystal.py [-h] [-q] port archive_dirpath [default_origin_domain]
+
+An archiving HTTP proxy and web service.
+
+positional arguments:
+  port                  Port on which to run the HTTP proxy. Suggest 9227
+                        (WBCR).
+  archive_dirpath       Path to the archive directory. Usually has .wbcr
+                        extension.
+  default_origin_domain
+                        Default HTTP domain which the HTTP proxy will redirect
+                        to if no URL is specified.
+
+optional arguments:
+  -h, --help            Show this help message and exit.
+  -q, --quiet           Suppresses all output.
+```
+
+
+## HTTP API
+
+The HTTP API is the primary API for interacting with the webcrystal proxy.
+
+While the proxy is running, it responds to the following HTTP endpoints.
+
+Notice that GET is an accepted method for all endpoints, so that they can be easily requested using a regular web browser. Browser accessibility is convenient for manual inspection and browser-based website scrapers.
 
 ### `GET,HEAD /`
 
-Redirects to the home page of the default origin domain if it is known. Returns:
+Redirects to the home page of the default origin domain if it was specified at the CLI. Returns:
 
 * HTTP 404 (Not Found) if no default origin domain is specified (the default) or
 * HTTP 307 (Temporary Redirect) to the default origin domain if it is specified.
@@ -89,7 +121,7 @@ Deletes the specified URL in the archive. Returns:
 
 ## Archival Format
 
-When this proxy is started with a command like:
+When the proxy is started with a command like:
 
 ```
 ./webcrystal.py 9227 website.wbcr
