@@ -1,5 +1,7 @@
 # webcrystal
 
+<img src="README/logo.png" title="webcrystal icon" align="right" />
+
 webcrystal is:
 
 1. An HTTP proxy and web service that saves every web page accessed through it to disk.
