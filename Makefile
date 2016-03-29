@@ -1,6 +1,7 @@
 # Run all automated tests
 test:
-	python3 test.py
+	nosetests
+	#python3 test.py  # if nose is not available
 
 # Collect code coverage metrics
 coverage:

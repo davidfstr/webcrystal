@@ -11,7 +11,7 @@ webcrystal is intended as a tool for archiving websites. It is intended to be co
 
 * Compact package: One .py file. Only one dependency (`urllib3`).
 * A simple documented archival format.
-* Nearly 100% code coverage.
+* >95% code coverage, enforced by the test suite.
 * Friendly MIT license.
 * Excellent documentation.
 
@@ -177,6 +177,12 @@ Example:
 
 
 ## Contributing
+
+### Install Dev Requirements
+
+```
+pip3 install -r dev-requirements.txt
+```
 
 ### Running the Tests
 
