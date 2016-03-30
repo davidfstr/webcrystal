@@ -15,3 +15,10 @@
 .coverage
 .coverage.*
 htmlcov
+
+# setup.py
+build
+dist
+MANIFEST
+README.rst
+*.egg-info
