@@ -49,6 +49,6 @@ setup(
     
     # Dependencies
     install_requires=[
-        'urllib3'  # TODO: Include lower bound
+        'urllib3>=1.15'
     ]
 )
