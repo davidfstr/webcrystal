@@ -24,13 +24,26 @@ from socketserver import ThreadingMixIn
 import sys
 from threading import Lock
 
+if not (sys.version_info >= (3, 4)):
+    raise ImportError('webcrystal requires Python 3.4 or later.')
+
 try:
     import urllib3
 except ImportError:
     raise ImportError('webcrystal requires urllib3. Try: pip3 install urllib3')
 
-if not (sys.version_info >= (3, 4)):
-    raise ImportError('webcrystal requires Python 3.4 or later.')
+# Try to use PyOpenSSL if it is available.
+# 
+# This allows most HTTPS connections to succeed on operating systems
+# like OS X 10.11 that ship with such old versions of OpenSSL that most
+# HTTPS connections are dropped.
+try:
+    # Requires: pip3 install pyopenssl ndg-httpsclient pyasn1
+    import urllib3.contrib.pyopenssl
+except ImportError:
+    pass
+else:
+    urllib3.contrib.pyopenssl.inject_into_urllib3()
 
 
 # ==============================================================================

@@ -215,3 +215,10 @@ open htmlcov/index.html
 ## License
 
 This code is provided under the MIT License. See LICENSE file for details.
+
+
+## Changelog
+
+* v1.0.1
+    - More robust support for HTTPS URLs on OS X 10.11.
+* v1.0 - Initial release

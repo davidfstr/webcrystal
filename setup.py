@@ -49,6 +49,10 @@ setup(
     
     # Dependencies
     install_requires=[
-        'urllib3>=1.15'
+        # Need 1.15.x for header ordering guarantees
+        'urllib3>=1.15.1',
+        
+        # Needed for urllib3 to fetch HTTPS URLs on OS X 10.11
+        'pyopenssl', 'ndg-httpsclient', 'pyasn1',
     ]
 )
