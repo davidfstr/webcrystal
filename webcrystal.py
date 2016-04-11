@@ -148,10 +148,14 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
             f.close()
     
     def _send_head(self, *, method):
-        if self.path.startswith('/_') and not self.path.startswith('/_/'):
-            return self._send_head_for_special_request(method=method)
-        else:
-            return self._send_head_for_regular_request(method=method)
+        try:
+            if self.path.startswith('/_') and not self.path.startswith('/_/'):
+                return self._send_head_for_special_request(method=method)
+            else:
+                return self._send_head_for_regular_request(method=method)
+        except Exception as e:
+            # Annotate exception with offending URL and method
+            raise Exception('Problem while serving %s of %s: %s' % (method, self.path, e)) from e
     
     def _send_head_for_special_request(self, *, method):
         if self.path == '/_online':
