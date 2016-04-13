@@ -4,3 +4,6 @@ urllib3==1.15.1
 pyOpenSSL==16.0.0
 ndg-httpsclient==0.4.0
 pyasn1==0.1.9
+
+# Needed for urllib3 to perform HTTPS certificate validation
+certifi==2016.2.28

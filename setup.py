@@ -54,5 +54,8 @@ setup(
         
         # Needed for urllib3 to fetch HTTPS URLs on OS X 10.11
         'pyopenssl', 'ndg-httpsclient', 'pyasn1',
+        
+        # Needed for urllib3 to perform HTTPS certificate validation
+        'certifi',
     ]
 )

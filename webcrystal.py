@@ -32,7 +32,7 @@ try:
 except ImportError:
     raise ImportError('webcrystal requires urllib3. Try: pip3 install urllib3')
 
-# Try to use PyOpenSSL if it is available.
+# Use PyOpenSSL if it is available.
 # 
 # This allows most HTTPS connections to succeed on operating systems
 # like OS X 10.11 that ship with such old versions of OpenSSL that most
@@ -45,12 +45,22 @@ except ImportError:
 else:
     urllib3.contrib.pyopenssl.inject_into_urllib3()
 
+# Force HTTPS certificate validation with certifi if it is available.
+try:
+    import certifi
+except ImportError:
+    _pool_manager_kwargs = dict()
+else:
+    _pool_manager_kwargs = dict(
+        cert_reqs='CERT_REQUIRED', # Force certificate check.
+        ca_certs=certifi.where(),  # Path to the Certifi bundle.
+    )
 
 # ==============================================================================
 # Service
 
 
-http = urllib3.PoolManager()
+_http = urllib3.PoolManager(**_pool_manager_kwargs)
 
 
 def main(raw_cli_args):
@@ -350,7 +360,7 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
             proxy_info=self._proxy_info,
             default_origin_domain=self._default_origin_domain)
         
-        response = http.request(
+        response = _http.request(
             method='GET',
             url=request_url,
             headers=request_headers,

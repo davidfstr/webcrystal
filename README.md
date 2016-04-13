@@ -221,4 +221,5 @@ This code is provided under the MIT License. See LICENSE file for details.
 
 * v1.0.1
     - More robust support for HTTPS URLs on OS X 10.11.
+    - Validate HTTPS certificates.
 * v1.0 - Initial release
