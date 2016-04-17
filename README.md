@@ -20,7 +20,7 @@ webcrystal is intended as a tool for archiving websites. It is also intended to 
 ## Installation
 
 * Install [Python 3].
-* From a command line terminal (Terminal on OS X, Command Prompt on Windows), run the command:
+* From a command-line terminal (Terminal on OS X, Command Prompt on Windows), run the command:
 
 ```
 pip3 install webcrystal
