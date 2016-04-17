@@ -197,13 +197,13 @@ Example:
 pip3 install -r dev-requirements.txt
 ```
 
-### Running the Tests
+### Run the Tests
 
 ```
 make test
 ```
 
-### Gathering Code Coverage Metrics
+### Gather Code Coverage Metrics
 
 ```
 make coverage
