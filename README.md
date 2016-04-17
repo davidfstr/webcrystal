@@ -7,7 +7,7 @@ webcrystal is:
 1. An HTTP proxy and web service that saves every web page accessed through it to disk.
 2. An on-disk archival format for storing websites.
 
-webcrystal is intended as a tool for archiving websites. It is intended to be convenient to write HTTP-based web scrapers and browser-based web scrapers on top of.
+webcrystal is intended as a tool for archiving websites. It is also intended to be convenient to write HTTP-based and browser-based web scrapers on top of.
 
 ## Features
 
