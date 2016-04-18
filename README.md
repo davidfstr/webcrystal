@@ -212,6 +212,7 @@ open htmlcov/index.html
 
 ### Upload a New Version to PyPI
 
+* Ensure the tests pass.
 * Ensure the changelog is updated.
 * Bump the version number in `setup.py`.
 * `python3 setup.py sdist bdist_wheel upload`
