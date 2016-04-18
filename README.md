@@ -210,6 +210,15 @@ make coverage
 open htmlcov/index.html
 ```
 
+### Upload a New Version to PyPI
+
+* Ensure the changelog is updated.
+* Bump the version number in `setup.py`.
+* `python3 setup.py sdist bdist_wheel upload`
+    - There are more advanced [upload techniques] that might be used later.
+* Tag the release in Git.
+
+[upload techniques]: https://packaging.python.org/en/latest/distributing/#upload-your-distributions
 
 ## Known Limitations
 

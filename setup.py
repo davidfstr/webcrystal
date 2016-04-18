@@ -9,14 +9,19 @@ def is_older_than(file1, file2):
 
 # Generate README.rst if missing or out of date
 if not os.path.exists('README.rst') or is_older_than('README.rst', 'README.md'):
-    os.system('pandoc --from=markdown --to=rst --output=README.rst README.md')
+    result = os.system('pandoc --from=markdown --to=rst --output=README.rst README.md')
+    if result == 0x7f00:
+        sys.exit('Pandoc is not installed. It is required when changing README.md.')
+    if result != 0:
+        sys.exit('Pandoc exited with error code %s while processing README.md.' % result)
+
 with open('README.rst') as file:
     long_description = file.read()
 
 setup(
     # Identity
     name='webcrystal',
-    version='1.0',
+    version='1.0.1',
     
     # Contents
     py_modules=['webcrystal'],
