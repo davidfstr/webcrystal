@@ -210,7 +210,7 @@ make coverage
 open htmlcov/index.html
 ```
 
-### Upload a New Version to PyPI
+### Release a New Version
 
 * Ensure the tests pass.
 * Ensure the changelog is updated.
