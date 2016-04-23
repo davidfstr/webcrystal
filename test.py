@@ -717,8 +717,7 @@ def start_proxy_server(port, default_origin_domain):
         args=(['--quiet', str(port), archive_dirpath, default_origin_domain],))
     process.start()
     
-    while not is_port_open('127.0.0.1', port):
-        time.sleep(20/1000)
+    wait_until_port_not_open('127.0.0.1', port)
     
     return process
 
@@ -746,8 +745,7 @@ def start_origin_server(port, responses):
     thread = Thread(target=httpd.serve_forever)
     thread.start()
     
-    while not is_port_open('127.0.0.1', port):
-        time.sleep(20/1000)
+    wait_until_port_not_open('127.0.0.1', port)
     
     return httpd
 
@@ -804,14 +802,19 @@ class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
 # ------------------------------------------------------------------------------
 # Utility
 
+def wait_until_port_not_open(hostname, port):
+    while is_port_open(hostname, port):
+        time.sleep(20/1000)
+
+
 def is_port_open(hostname, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         result = s.connect_ex((hostname, port))
         if result == 0:
-            return True
-        else:
             return False
+        else:
+            return True
     finally:
         s.close()
 
