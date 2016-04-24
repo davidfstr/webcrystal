@@ -60,7 +60,7 @@ else:
 # Service
 
 
-_http = urllib3.PoolManager(**_pool_manager_kwargs)
+_http = urllib3.PoolManager(retries=0, **_pool_manager_kwargs)
 
 
 def main(raw_cli_args):
@@ -237,10 +237,14 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
             if request_headers is None:
                 return self._send_head_for_simple_response(404)  # Not Found
             
-            resource = self._fetch_from_origin_and_store_in_archive(
-                request_url, request_headers,
-                parsed_request_url=parsed_request_url)
-            resource.content.close()
+            try:
+                resource = self._fetch_from_origin_and_store_in_archive(
+                    request_url, request_headers,
+                    parsed_request_url=parsed_request_url)
+            except _OriginServerError as e:
+                return self._send_head_for_origin_server_error(e)
+            else:
+                resource.content.close()
             
             return self._send_head_for_simple_response(200)  # OK
             
@@ -338,10 +342,13 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
                     ).encode('utf8')
                 )
             
-            resource = self._fetch_from_origin_and_store_in_archive(
-                request_url,
-                self.headers,
-                parsed_request_url=parsed_request_url)
+            try:
+                resource = self._fetch_from_origin_and_store_in_archive(
+                    request_url,
+                    self.headers,
+                    parsed_request_url=parsed_request_url)
+            except _OriginServerError as e:
+                return self._send_head_for_origin_server_error(e)
         
         return self._send_head_for_resource(resource)
     
@@ -360,12 +367,15 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
             proxy_info=self._proxy_info,
             default_origin_domain=self._default_origin_domain)
         
-        response = _http.request(
-            method='GET',
-            url=request_url,
-            headers=request_headers,
-            redirect=False
-        )
+        try:
+            response = _http.request(
+                method='GET',
+                url=request_url,
+                headers=request_headers,
+                redirect=False
+            )
+        except Exception as e:
+            raise _OriginServerError(request_url) from e
         
         # NOTE: Not streaming the response at the moment for simplicity.
         #       Probably want to use iter_content() later.
@@ -420,6 +430,21 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         return BytesIO(b'')
     
+    def _send_head_for_origin_server_error(self, e):
+        f = e.__cause__
+        
+        self.send_response(502)  # Bad Gateway
+        self.send_header('Content-Type', 'text/html')
+        self.end_headers()
+        
+        return BytesIO(
+            (('<html>Error while fetching resource <a href="%s">%s</a>.' +
+              '<pre>%s: %s</pre></html>') %
+              (html.escape(e.request_url), html.escape(e.request_url),
+               html.escape(type(f).__name__), html.escape(str(f)))
+            ).encode('utf8')
+        )
+    
     def log_message(self, *args):
         if self._is_quiet:
             pass  # operate silently
@@ -432,6 +457,11 @@ def _del_headers(headers, header_names_to_delete):
     for key in list(headers.keys()):
         if key.lower() in header_names_to_delete:
             del headers[key]
+
+
+class _OriginServerError(Exception):
+    def __init__(self, request_url):
+        self.request_url = request_url
 
 
 # ------------------------------------------------------------------------------

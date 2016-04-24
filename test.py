@@ -24,7 +24,7 @@ import urllib3
 # ------------------------------------------------------------------------------
 # Tests
 
-http = urllib3.PoolManager()
+http = urllib3.PoolManager(retries=0)
 
 
 _HOST = '127.0.0.1'
@@ -136,6 +136,17 @@ def send_certain_response_headers():
     
     return generate_response
 
+def sometimes_disconnects():
+    def generate_response(path, headers):
+        global _should_disconnect
+        
+        if _should_disconnect:
+            return '__disconnect__'
+        else:
+            return dict(status_code=200)
+    
+    return generate_response
+
 _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -215,6 +226,7 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/api/get_counter_only_chrome': forbid_unless_user_agent_is('Chrome', get_counter()),
     '/api/expects_certain_request_headers': expects_certain_request_headers(),
     '/api/send_certain_response_headers': send_certain_response_headers(),
+    '/sometimes_disconnects': sometimes_disconnects(),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -637,6 +649,11 @@ class CoreEndpointTests(_AbstractEndpointTests):
         response = self._get('/_/bogus_url')
         self.assertEqual(400, response.status_code)  # Bad Request
     
+    def test_fetch_of_unreachable_origin_server_returns_http_502(self):
+        response = self._get('/_/http/nosuchsite-really.com/')
+        self.assertEqual(502, response.status_code)  # Bad Gateway
+        self.assertIn('"http://nosuchsite-really.com/"', response.text)
+    
     def test_head_works(self):
         response = self._head(format_proxy_path('http', _DEFAULT_DOMAIN, '/'))
         self.assertEqual('text/html', response.headers['Content-Type'])
@@ -698,6 +715,20 @@ class RefreshEndpointTests(_AbstractEndpointTests):
             format_proxy_path('http', _DEFAULT_DOMAIN, '/',
                 command='_refresh'))
         self.assertEqual(405, response.status_code)
+    
+    def test_refresh_of_unreachable_origin_server_returns_http_502(self):
+        global _should_disconnect
+        
+        _should_disconnect = False
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/sometimes_disconnects'))
+        self.assertEqual(200, response.status_code)
+        
+        _should_disconnect = True
+        response = self._post(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/sometimes_disconnects',
+                command='_refresh'))
+        self.assertEqual(502, response.status_code)  # Bad Gateway
 
 
 class ModuleImportTests(TestCase):
@@ -821,6 +852,10 @@ class _TestServerHttpRequestHandler(BaseHTTPRequestHandler):
         # Compute response if it is dynamic
         if callable(response):
             response = response(self.path, self.headers)
+        
+        # Disconnect abruptly if requested to
+        if response == '__disconnect__':
+            return BytesIO(b'')
         
         # Send header
         self.send_response(response.get('status_code', 200))

@@ -100,14 +100,17 @@ If in online mode (the default):
 
 * The requested resource will be fetched from the origin server and added to the archive if:
     * (1) it is not already archived,
-    * (2) a `Cache-Control=no-cache` header is specified, or
-    * (3) a `Pragma=no-cache` header is specified.
+    * (2) a `Cache-Control=no-cache` request header is specified, or
+    * (3) a `Pragma=no-cache` request header is specified.
 * The newly archived resource will be returned to the client, with all URLs in HTTP headers and content rewritten to point to the proxy.
+* If there was problem communicating with the origin server, returns:
+    * HTTP 502 (Bad Gateway), with an HTML page that provides a link to the online version of the content.
 
 If in offline mode:
 
 * If the resource is in the archive, it will be returned to the client, with all URLs in HTTP headers and content rewritten to point to the proxy.
-* If the resource is not in the archive, an HTTP 503 (Service Unavailable) response will be returned, with an HTML page that provides a link to the online version of the content.
+* If the resource is not in the archive, returns:
+    * HTTP 503 (Service Unavailable), with an HTML page that provides a link to the online version of the content.
 
 ### `POST,GET /_online`
 
@@ -121,14 +124,15 @@ Switches the proxy to offline mode.
 
 Refetches the specified URL from the origin server using the same request headers as the last time it was fetched. Returns:
 
-* HTTP 200 (OK) if successful or
-* HTTP 404 (Not Found) if the specified URL was not in the archive.
+* HTTP 200 (OK) if successful,
+* HTTP 404 (Not Found) if the specified URL was not in the archive, or
+* HTTP 502 (Bad Gateway) if there was problem communicating with the origin server.
 
 ### `POST,GET /_delete/http[s]/__PATH__`
 
 Deletes the specified URL in the archive. Returns:
 
-* HTTP 200 (OK) if successful or
+* HTTP 200 (OK) if successful, or
 * HTTP 404 (Not Found) if the specified URL was not in the archive.
 
 
@@ -234,6 +238,9 @@ This code is provided under the MIT License. See LICENSE file for details.
 
 ## Changelog
 
+* master
+    - Improve error reporting when origin server is unavailable.
+      See HTTP 502 (Bad Gateway) response situations.
 * v1.0.1
     - More robust support for HTTPS URLs on OS X 10.11.
     - Validate HTTPS certificates.
