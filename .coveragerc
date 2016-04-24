@@ -4,6 +4,10 @@
 omit =
     # Ignore 3rd party modules like: django, selenium, markdown, yaml, etc
     /usr/local/lib/*
+    venv/*
+    
+    # Ignore the test suite itself, which artificially boosts the average
+    test.py
 
 # Track coverage when running the caching_proxy as a separate Process
 concurrency = multiprocessing
