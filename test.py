@@ -232,18 +232,83 @@ _OTHER_SERVER_RESPONSES = {  # like a social network
     )),
 }
 
-class ArchivingProxyTests(TestCase):
+
+class _AbstractEndpointTests(TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._proxy_server = start_proxy_server(_PROXY_PORT, _DEFAULT_DOMAIN)
-        cls._default_server = start_origin_server(_DEFAULT_DOMAIN_PORT, _DEFAULT_SERVER_RESPONSES)
-        cls._other_server = start_origin_server(_OTHER_DOMAIN_PORT, _OTHER_SERVER_RESPONSES)
+        cls._proxy_server = _RealProxyServer(_PROXY_PORT, _DEFAULT_DOMAIN)
+        cls._default_server = _MockOriginServer(_DEFAULT_DOMAIN_PORT, _DEFAULT_SERVER_RESPONSES)
+        cls._other_server = _MockOriginServer(_OTHER_DOMAIN_PORT, _OTHER_SERVER_RESPONSES)
     
     @classmethod
     def tearDownClass(cls):
-        stop_proxy_server(cls._proxy_server)
-        stop_origin_server(cls._default_server)
-        stop_origin_server(cls._other_server)
+        cls._proxy_server.close()
+        cls._default_server.close()
+        cls._other_server.close()
+    
+    # === Utility: HTTP ===
+    
+    def _get(self, *args, **kwargs):
+        return self._request('GET', *args, **kwargs)
+    
+    def _head(self, *args, **kwargs):
+        return self._request('HEAD', *args, **kwargs)
+    
+    def _post(self, *args, **kwargs):
+        return self._request('POST', *args, **kwargs)
+    
+    def _request(self, method, path, headers={}, *, allow_redirects=False, cache=False):
+        final_headers = OrderedDict(headers)  # clone
+        if not cache:
+            final_headers['Cache-Control'] = 'no-cache'
+            final_headers['X-Pragma'] = 'no-cache'
+        
+        urllib3_response = http.request(
+            method=method,
+            url=_PROXY_SERVER_URL + path,
+            headers=final_headers,
+            redirect=allow_redirects
+        )
+        return _HttpResponse(urllib3_response)
+
+
+class _HttpResponse:
+    """
+    An HTTP response.
+    
+    Simulates the API of the "requests" library, since that's the library that
+    the test suite was originally written with.
+    """
+    def __init__(self, urllib3_response):
+        self._urllib3_response = urllib3_response
+    
+    @property
+    def status_code(self):
+        return self._urllib3_response.status
+    
+    @property
+    def headers(self):
+        return self._urllib3_response.headers
+    
+    @property
+    def text(self):
+        return self._urllib3_response.data.decode('utf8')
+    
+    @property
+    def content(self):
+        return self._urllib3_response.data
+
+
+class CoreEndpointTests(_AbstractEndpointTests):
+    """
+    Acceptance tests for the behavior of the core endpoints:
+        * GET,HEAD /
+        * GET,HEAD /_/http[s]/__PATH__
+    
+    And supporting endpoints:
+        * POST,GET /_online
+        * POST,GET /_offline
+    """
     
     # === Request Formats ===
     
@@ -562,6 +627,40 @@ class ArchivingProxyTests(TestCase):
         finally:
             self._go_online()
     
+    # === Misc ===
+    
+    def test_invalid_command_is_rejected(self):
+        response = self._get('/_bogus/')
+        self.assertEqual(400, response.status_code)  # Bad Request
+    
+    def test_fetch_of_invalid_proxy_url_returns_bad_request(self):
+        response = self._get('/_/bogus_url')
+        self.assertEqual(400, response.status_code)  # Bad Request
+    
+    def test_head_works(self):
+        response = self._head(format_proxy_path('http', _DEFAULT_DOMAIN, '/'))
+        self.assertEqual('text/html', response.headers['Content-Type'])
+    
+    # === Utility: Commands ===
+    
+    def _go_online(self, *, method='POST'):
+        response = self._request(method, '/_online')
+        self.assertEqual(200 if method in ['POST', 'GET'] else 405, response.status_code)
+    
+    def _go_offline(self, *, method='POST'):
+        response = self._request(method, '/_offline')
+        self.assertEqual(200 if method in ['POST', 'GET'] else 405, response.status_code)
+
+
+class RefreshEndpointTests(_AbstractEndpointTests):
+    """
+    Acceptance tests for the refresh endpoint:
+        * POST,GET /_refresh/http[s]/__PATH__
+    
+    This endpoint mainly exists to prove that webcrystal persists the original
+    request headers for a previously fetched URL.
+    """
+    
     # === Refresh ===
     
     def test_can_refresh_resource_without_resending_request_headers(self):
@@ -599,85 +698,14 @@ class ArchivingProxyTests(TestCase):
             format_proxy_path('http', _DEFAULT_DOMAIN, '/',
                 command='_refresh'))
         self.assertEqual(405, response.status_code)
-    
-    # === Misc ===
-    
-    def test_invalid_command_is_rejected(self):
-        response = self._get('/_bogus/')
-        self.assertEqual(400, response.status_code)  # Bad Request
-    
-    def test_fetch_of_invalid_proxy_url_returns_bad_request(self):
-        response = self._get('/_/bogus_url')
-        self.assertEqual(400, response.status_code)  # Bad Request
-    
-    def test_head_works(self):
-        response = self._head(format_proxy_path('http', _DEFAULT_DOMAIN, '/'))
-        self.assertEqual('text/html', response.headers['Content-Type'])
-    
-    # === Utility: Commands ===
-    
-    def _go_online(self, *, method='POST'):
-        response = self._request(method, '/_online')
-        self.assertEqual(200 if method in ['POST', 'GET'] else 405, response.status_code)
-    
-    def _go_offline(self, *, method='POST'):
-        response = self._request(method, '/_offline')
-        self.assertEqual(200 if method in ['POST', 'GET'] else 405, response.status_code)
-    
-    # === Utility: HTTP ===
-    
-    def _get(self, *args, **kwargs):
-        return self._request('GET', *args, **kwargs)
-    
-    def _head(self, *args, **kwargs):
-        return self._request('HEAD', *args, **kwargs)
-    
-    def _post(self, *args, **kwargs):
-        return self._request('POST', *args, **kwargs)
-    
-    def _request(self, method, path, headers={}, *, allow_redirects=False, cache=False):
-        final_headers = OrderedDict(headers)  # clone
-        if not cache:
-            final_headers['Cache-Control'] = 'no-cache'
-            final_headers['X-Pragma'] = 'no-cache'
-        
-        urllib3_response = http.request(
-            method=method,
-            url=_PROXY_SERVER_URL + path,
-            headers=final_headers,
-            redirect=allow_redirects
-        )
-        return _HttpResponse(urllib3_response)
 
 
-class _HttpResponse:
+class ModuleImportTests(TestCase):
     """
-    An HTTP response.
-    
-    Simulates the API of the "requests" library, since that's the library that
-    the test suite was originally written with.
+    Acceptance tests related to the behavior of importing "webcrystal",
+    particularly as related to dependencies available in the environment.
     """
-    def __init__(self, urllib3_response):
-        self._urllib3_response = urllib3_response
     
-    @property
-    def status_code(self):
-        return self._urllib3_response.status
-    
-    @property
-    def headers(self):
-        return self._urllib3_response.headers
-    
-    @property
-    def text(self):
-        return self._urllib3_response.data.decode('utf8')
-    
-    @property
-    def content(self):
-        return self._urllib3_response.data
-
-
-class WebCrystalModuleTests(TestCase):
     def test_missing_urllib3_gives_nice_error_message(self):
         with mock.patch.dict('sys.modules', {'urllib3': None}):
             del sys.modules['webcrystal']  # unimport
@@ -717,56 +745,57 @@ class WebCrystalModuleTests(TestCase):
 # ------------------------------------------------------------------------------
 # Real Proxy Server
 
-def start_proxy_server(port, default_origin_domain):
-    archive_dirpath = os.path.join(
-        tempfile.mkdtemp(prefix='webcrystal_test_archive'),
-        'default_origin.wbcr')
+class _RealProxyServer:
+    def __init__(self, port, default_origin_domain):
+        self._port = port
+        
+        archive_dirpath = os.path.join(
+            tempfile.mkdtemp(prefix='webcrystal_test_archive'),
+            'default_origin.wbcr')
+        
+        self._process = Process(
+            target=webcrystal.main,
+            args=(['--quiet', str(port), archive_dirpath, default_origin_domain],))
+        self._process.start()
+        
+        wait_until_port_not_open('127.0.0.1', port)
     
-    process = Process(
-        target=webcrystal.main,
-        args=(['--quiet', str(port), archive_dirpath, default_origin_domain],))
-    process.start()
-    
-    wait_until_port_not_open('127.0.0.1', port)
-    
-    return process
-
-
-def stop_proxy_server(proxy_server):
-    process = proxy_server
-    
-    # Send Control-C to the process to bring it down gracefully
-    # NOTE: Graceful shutdown is required in order to collect
-    #       code coverage metrics properly.
-    os.kill(process.pid, signal.SIGINT)
+    def close(self):
+        # Send Control-C to the process to bring it down gracefully
+        # NOTE: Graceful shutdown is required in order to collect
+        #       code coverage metrics properly.
+        os.kill(self._process.pid, signal.SIGINT)
+        
+        wait_until_port_open('127.0.0.1', self._port)
 
 
 # ------------------------------------------------------------------------------
 # Mock Origin Server
 
 
-def start_origin_server(port, responses):
-    def create_request_handler(*args):
-        nonlocal responses
-        return TestServerHttpRequestHandler(*args, responses=responses)
+class _MockOriginServer:
+    def __init__(self, port, responses):
+        self._port = port
+        
+        def create_request_handler(*args):
+            nonlocal responses
+            return _TestServerHttpRequestHandler(*args, responses=responses)
+        
+        self._httpd = HTTPServer(('', port), create_request_handler)
+        
+        # NOTE: Use a low poll interval so that shutdown() completes quickly
+        thread = Thread(target=lambda: self._httpd.serve_forever(poll_interval=50/1000))
+        thread.start()
+        
+        wait_until_port_not_open('127.0.0.1', port)
     
-    httpd = HTTPServer(('', port), create_request_handler)
-    
-    thread = Thread(target=httpd.serve_forever)
-    thread.start()
-    
-    wait_until_port_not_open('127.0.0.1', port)
-    
-    return httpd
+    def close(self):
+        self._httpd.shutdown()
+        self._httpd.socket.close()
+        
+        assert is_port_open('127.0.0.1', self._port)
 
-
-def stop_origin_server(origin_server):
-    httpd = origin_server
-    
-    httpd.shutdown()
-
-
-class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
+class _TestServerHttpRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, responses):
         self._responses = responses
         super().__init__(*args)
@@ -814,6 +843,11 @@ class TestServerHttpRequestHandler(BaseHTTPRequestHandler):
 
 def wait_until_port_not_open(hostname, port):
     while is_port_open(hostname, port):
+        time.sleep(20/1000)
+
+
+def wait_until_port_open(hostname, port):
+    while not is_port_open(hostname, port):
         time.sleep(20/1000)
 
 
