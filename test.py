@@ -702,6 +702,16 @@ class WebCrystalModuleTests(TestCase):
                 self.fail()
         finally:
             sys.version_info = old_version_info
+    
+    def test_imports_when_missing_pyopenssl(self):
+        with mock.patch.dict('sys.modules', {'urllib3.contrib.pyopenssl': None}):
+            del sys.modules['webcrystal']  # unimport
+            import webcrystal
+    
+    def test_imports_when_missing_certifi(self):
+        with mock.patch.dict('sys.modules', {'certifi': None}):
+            del sys.modules['webcrystal']  # unimport
+            import webcrystal
 
 
 # ------------------------------------------------------------------------------
