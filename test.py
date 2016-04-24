@@ -246,9 +246,11 @@ _OTHER_SERVER_RESPONSES = {  # like a social network
 
 
 class _AbstractEndpointTests(TestCase):
+    has_default_domain = True
+    
     @classmethod
     def setUpClass(cls):
-        cls._proxy_server = _RealProxyServer(_PROXY_PORT, _DEFAULT_DOMAIN)
+        cls._proxy_server = _RealProxyServer(_PROXY_PORT, _DEFAULT_DOMAIN if cls.has_default_domain else None)
         cls._default_server = _MockOriginServer(_DEFAULT_DOMAIN_PORT, _DEFAULT_SERVER_RESPONSES)
         cls._other_server = _MockOriginServer(_OTHER_DOMAIN_PORT, _OTHER_SERVER_RESPONSES)
     
@@ -669,6 +671,27 @@ class CoreEndpointTests(_AbstractEndpointTests):
         self.assertEqual(200 if method in ['POST', 'GET'] else 405, response.status_code)
 
 
+class CoreEndpointTests2(_AbstractEndpointTests):
+    """
+    Subset of the core endpoint tests that check behavior when there is no
+    default origin domain.
+    """
+    
+    has_default_domain = False
+    
+    # === Request Formats ===
+    
+    # GET/HEAD of /__PATH__ when Referer is omitted
+    #   -> HTTP 404
+    def test_request_of_unqualified_path_without_referer_returns_404_if_no_default_domain(self):
+        for method in ['GET', 'HEAD', 'POST']:
+            response = self._request(method, '/posts/', allow_redirects=True)
+            if method == 'POST':
+                self.assertEqual(405, response.status_code)
+            else:
+                self.assertEqual(404, response.status_code)
+
+
 class RefreshEndpointTests(_AbstractEndpointTests):
     """
     Acceptance tests for the refresh endpoint:
@@ -784,9 +807,11 @@ class _RealProxyServer:
             tempfile.mkdtemp(prefix='webcrystal_test_archive'),
             'default_origin.wbcr')
         
-        self._process = Process(
-            target=webcrystal.main,
-            args=(['--quiet', str(port), archive_dirpath, default_origin_domain],))
+        args = ['--quiet', str(port), archive_dirpath,]
+        if default_origin_domain is not None:
+            args.append(default_origin_domain)
+        
+        self._process = Process(target=webcrystal.main, args=(args,))
         self._process.start()
         
         wait_until_port_not_open('127.0.0.1', port)
