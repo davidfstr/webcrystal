@@ -20,3 +20,7 @@ concurrency = multiprocessing
 # NOTE: This option seems to be ignored by the HTML report generator,
 #       although it IS respected by the CLI report generator.
 skip_covered = True
+
+# Exclude lines from coverage that contain ...
+exclude_lines =
+    pragma: no cover

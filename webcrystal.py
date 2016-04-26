@@ -930,7 +930,7 @@ class HttpResourceArchive:
         Closes this archive.
         """
         if self._closed:
-            return
+            return  # pragma: no cover: unreachable by tests
         self.flush()
         self._closed = True
 
@@ -961,4 +961,4 @@ class HttpResourceArchive:
 # ------------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    main(sys.argv[1:])  # pragma: no cover: unreachable by tests
