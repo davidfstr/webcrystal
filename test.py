@@ -147,6 +147,16 @@ def sometimes_disconnects():
     
     return generate_response
 
+def nice_404_page():
+    def generate_response(path, headers):
+        return dict(
+            status_code=404,
+            headers=[('Content-Type', 'text/plain')],
+            body='No such page was found!'
+        )
+    
+    return generate_response
+
 _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/': dict(
         headers=[('Content-Type', 'text/html')],
@@ -227,6 +237,7 @@ _DEFAULT_SERVER_RESPONSES = {  # like a blog
     '/api/expects_certain_request_headers': expects_certain_request_headers(),
     '/api/send_certain_response_headers': send_certain_response_headers(),
     '/sometimes_disconnects': sometimes_disconnects(),
+    '/404.html': nice_404_page(),
 }
 
 _OTHER_SERVER_RESPONSES = {  # like a social network
@@ -614,7 +625,7 @@ class CoreEndpointTests(_AbstractEndpointTests):
             finally:
                 self._go_online(method=starline_method)
     
-    def test_fetch_of_unarchived_resource_in_offline_mode_returns_http_503(self):
+    def test_fetch_of_unarchived_resource_in_offline_mode_returns_http_503_with_link(self):
         for starline_method in ['POST', 'GET']:
             response = self._get(
                 format_proxy_path('http', _DEFAULT_DOMAIN, '/',
@@ -690,6 +701,69 @@ class CoreEndpointTests2(_AbstractEndpointTests):
                 self.assertEqual(405, response.status_code)
             else:
                 self.assertEqual(404, response.status_code)
+
+
+class RawEndpointTests(_AbstractEndpointTests):
+    """
+    Acceptance tests for the raw endpoint:
+        * GET,HEAD /_raw/http[s]/__PATH__
+    
+    This endpoint exists primarily so that scrapers built on top of webcrystal
+    can access the raw content of an archive without causing an implicit fetch
+    of missing content, as would be the case with the core /_/ endpoint.
+    """
+    
+    def test_request_of_resource_in_archive_returns_original_resource_verbatim(self):
+        ORIGINAL_RESOURCE = _DEFAULT_SERVER_RESPONSES['/posts/link_to_social_network.html']
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/link_to_social_network.html'))
+        self.assertEqual(200, response.status_code)
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/posts/link_to_social_network.html',
+                command='_raw'))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(ORIGINAL_RESOURCE['body'], response.text)
+        self.assertEqual(
+            OrderedDict(ORIGINAL_RESOURCE['headers']),
+            self._remove_automatically_added_headers(
+                OrderedDict(response.headers)))
+    
+    def test_request_of_resource_not_in_archive_returns_http_503_with_link(self):
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/not_in_archive',
+                command='_raw'))
+        self.assertEqual(503, response.status_code)
+        self.assertIn('"http://%s/not_in_archive"' % _DEFAULT_DOMAIN, response.text)
+    
+    def test_request_of_404_in_archive_returns_404(self):
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/404.html'))
+        self.assertEqual(404, response.status_code)
+        self.assertEqual('No such page was found!', response.text)
+        
+        response = self._get(
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/404.html',
+                command='_raw'))
+        self.assertEqual(404, response.status_code)
+        self.assertEqual('No such page was found!', response.text)
+    
+    def test_cannot_use_invalid_method(self):
+        response = self._request('POST',
+            format_proxy_path('http', _DEFAULT_DOMAIN, '/',
+                command='_raw'))
+        self.assertEqual(405, response.status_code)
+    
+    # Removes headers added automatically by http.server (the underlying
+    # server used by the MockOriginServer). They are hard to remove without
+    # monkeypatching. So just ignore them.
+    def _remove_automatically_added_headers(self, headers):
+        headers = headers.copy()
+        for hn in ['Server', 'Date', 'Content-Length']:
+            if hn in headers:
+                del headers[hn]
+        return headers
 
 
 class RefreshEndpointTests(_AbstractEndpointTests):

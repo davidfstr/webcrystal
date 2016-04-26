@@ -120,6 +120,14 @@ Switches the proxy to online mode.
 
 Switches the proxy to offline mode.
 
+### `GET,HEAD /_raw/http[s]/__PATH__`
+
+Returns the specified resource from the archive if it is already archived. Nothing about the resource will be rewritten including any URLs that appear in HTTP headers or content. The intent is that the returned resource be as close to the original response from the origin server as is practical.
+
+If the resource is not in the archive, returns:
+
+* HTTP 503 (Service Unavailable), with an HTML page that provides a link to the online version of the content.
+
 ### `POST,GET /_refresh/http[s]/__PATH__`
 
 Refetches the specified URL from the origin server using the same request headers as the last time it was fetched. Returns:
@@ -239,6 +247,7 @@ This code is provided under the MIT License. See LICENSE file for details.
 ## Changelog
 
 * master
+    - Add /_raw/ endpoint.
     - Improve error reporting when origin server is unavailable.
       See HTTP 502 (Bad Gateway) response situations.
 * v1.0.1

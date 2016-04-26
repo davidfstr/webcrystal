@@ -203,6 +203,32 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return BytesIO(b'OK')
         
+        elif self.path.startswith('/_raw/'):
+            if method not in ['GET', 'HEAD']:
+                return self._send_head_for_simple_response(405)  # Method Not Allowed
+            
+            parsed_request_url = _try_parse_client_request_path(self.path, self._default_origin_domain)
+            assert parsed_request_url is not None
+            request_url = '%s://%s%s' % (
+                parsed_request_url.protocol,
+                parsed_request_url.domain,
+                parsed_request_url.path
+            )
+            
+            resource = self._archive.get(request_url)
+            if resource is None:
+                self.send_response(503)  # Service Unavailable
+                self.send_header('Content-Type', 'text/html')
+                self.end_headers()
+                
+                return BytesIO(
+                    (('<html>Resource <a href="%s">%s</a> is not archived</html>') %
+                      (html.escape(request_url), html.escape(request_url))
+                    ).encode('utf8')
+                )
+            else:
+                return self._send_head_for_resource(resource, filter=False)
+        
         elif self.path.startswith('/_delete/'):
             if method not in ['POST', 'GET']:
                 return self._send_head_for_simple_response(405)  # Method Not Allowed
@@ -400,22 +426,29 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
         
         return resource
     
-    def _send_head_for_resource(self, resource):
+    def _send_head_for_resource(self, resource, *, filter=True):
         status_code = int(resource.headers['X-Status-Code'])
         resource_headers = OrderedDict(resource.headers)  # clone
         resource_content = resource.content
         
-        # Filter response headers before sending to client
-        _filter_headers(resource_headers, 'response header', is_quiet=self._is_quiet)
-        _reformat_absolute_urls_in_headers(
-            resource_headers,
-            proxy_info=self._proxy_info,
-            default_origin_domain=self._default_origin_domain)
+        if filter:
+            # Filter response headers before sending to client
+            _filter_headers(resource_headers, 'response header', is_quiet=self._is_quiet)
+            _reformat_absolute_urls_in_headers(
+                resource_headers,
+                proxy_info=self._proxy_info,
+                default_origin_domain=self._default_origin_domain)
+            
+            # Filter response content before sending to client
+            (resource_headers, resource_content) = _reformat_absolute_urls_in_content(
+                resource_headers, resource_content,
+                proxy_info=self._proxy_info)
         
-        # Filter response content before sending to client
-        (resource_headers, resource_content) = _reformat_absolute_urls_in_content(
-            resource_headers, resource_content,
-            proxy_info=self._proxy_info)
+        else:
+            # Minimal filtering: Remove only the internal response headers
+            for hn in list(resource_headers.keys()):
+                if hn.lower() in _INTERNAL_RESPONSE_HEADERS:
+                    del resource_headers[hn]
         
         # Send headers
         self.send_response(status_code)
