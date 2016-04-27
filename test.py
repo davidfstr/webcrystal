@@ -749,6 +749,12 @@ class RawEndpointTests(_AbstractEndpointTests):
         self.assertEqual(404, response.status_code)
         self.assertEqual('No such page was found!', response.text)
     
+    @skip('not yet automated')
+    def test_should_not_passthrough_connection_specific_headers(self):
+        # In particualr the 'Content-Encoding' header, if it was received
+        # from the origin server, should not be returned from the _raw endpoint.
+        pass
+    
     def test_cannot_use_invalid_method(self):
         response = self._request('POST',
             format_proxy_path('http', _DEFAULT_DOMAIN, '/',

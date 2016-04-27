@@ -447,7 +447,7 @@ class _ArchivingHTTPRequestHandler(BaseHTTPRequestHandler):
         else:
             # Minimal filtering: Remove only the internal response headers
             for hn in list(resource_headers.keys()):
-                if hn.lower() in _INTERNAL_RESPONSE_HEADERS:
+                if hn.lower() in _RAW_RESPONSE_HEADER_BLACKLIST:
                     del resource_headers[hn]
         
         # Send headers
@@ -571,6 +571,11 @@ _INTERNAL_RESPONSE_HEADERS = [
 _HEADER_BLACKLIST = (
     _REQUEST_HEADER_BLACKLIST + 
     _RESPONSE_HEADER_BLACKLIST + 
+    _INTERNAL_RESPONSE_HEADERS
+)
+
+_RAW_RESPONSE_HEADER_BLACKLIST = (
+    ['connection', 'transfer-encoding'] +
     _INTERNAL_RESPONSE_HEADERS
 )
 
