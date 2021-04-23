@@ -9,6 +9,7 @@ webcrystal is:
 
 webcrystal is intended as a tool for archiving websites. It is also intended to be convenient to write HTTP-based and browser-based web scrapers on top of.
 
+
 ## Features
 
 * Compact package: One .py file. Only one dependency (`urllib3`).
@@ -16,6 +17,7 @@ webcrystal is intended as a tool for archiving websites. It is also intended to 
 * &gt;95% code coverage, enforced by the test suite.
 * Friendly MIT license.
 * Excellent documentation.
+
 
 ## Installation
 
@@ -27,6 +29,7 @@ pip3 install webcrystal
 ```
 
 [Python 3]: https://www.python.org/downloads/
+
 
 ## Quickstart
 
@@ -233,10 +236,19 @@ open htmlcov/index.html
 
 [upload techniques]: https://packaging.python.org/en/latest/distributing/#upload-your-distributions
 
+
 ## Known Limitations
 
 * Sites that vary the content served at a particular URL depending on whether you are logged in can have only one version of the URL archived.
 
+
+## Related Projects
+
+* [Crystal Web Archiver] - An alternative website archiving tool that focuses 
+  on making it easy for humans (rather than for automated crawlers) to 
+  download websites.
+
+[Crystal Web Archiver]: http://dafoster.net/projects/crystal-web-archiver
 
 
 ## License
