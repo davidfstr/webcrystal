@@ -1,4 +1,4 @@
 urllib3==1.26.4
 
 # Needed for urllib3 to perform HTTPS certificate validation
-certifi==2020.12.5
+certifi==2022.12.7
